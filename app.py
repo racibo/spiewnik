@@ -15,127 +15,86 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-        /* Główne tło */
-        [data-testid="stAppViewContainer"] { background-color: #0e1117; }
-        [data-testid="stSidebar"] { background-color: #010409; }
-        
-        /* Kontener główny - marginesy */
-        .main .block-container { 
-            padding-top: 0rem !important; /* Maksymalnie do góry */
-            padding-bottom: 2rem;
-            max-width: 100%; 
-            padding-left: 1rem;
-            padding-right: 1rem;
-        }
-        
-        /* TYTUŁ I NAWIGACJA */
-        .song-title { 
-            font-size: 18px !important; /* Nieco mniejszy, by nie rozpychał linii */
-            font-weight: bold; 
-            margin: 0 !important; 
-            line-height: 1.5; 
-            color: #fff; 
-            text-align: center;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        /* UKŁAD WIERSZA (Tekst + Chwyty) - POPRAWIONY */
-        .song-container { margin-top: 15px; }
-        
-        .song-row {
-            display: flex;
-            justify-content: flex-start; /* Dosuwa wszystko do lewej */
-            align-items: baseline;
-            gap: 20px; /* To jest kluczowe - ustawia odstęp (np. 2 cm) między tekstem a chwytem */
-        }
+    /* Główne tło */
+    [data-testid="stAppViewContainer"] { background-color: #0e1117; }
+    [data-testid="stSidebar"] { background-color: #010409; }
+    
+    /* NAWIGACJA - WYMUSZENIE JEDNEJ LINII (MOBILE I PC) */
+    [data-testid="stHorizontalBlock"]:has(button[key*="nav_"]) {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 5px !important;
+    }
 
-        .lyrics-col {
-            flex: 0 0 auto; /* Kolumna tekstu zajmuje tylko tyle miejsca, ile potrzebuje */
-            min-width: 150px; /* Ale nie mniej niż 150px, żeby chwyty były w równej kolumnie */
-        }
+    /* TYTUŁ PIOSENKI - RESPONSYWNY */
+    .song-title {
+        font-weight: bold;
+        color: #ffffff;
+        text-align: center;
+        line-height: 1.1;
+        font-size: 32px !important; /* Duży na laptopie */
+        margin: 0px 10px !important;
+    }
 
-        .chords-col {
-            color: #ff4b4b;
-            font-weight: bold;
-        }
-        
-        /* STYLIZACJA PRZYCISKÓW */
-        div.stButton > button:first-child {
-            border-radius: 12px !important;
-            border: 1px solid #30363d;
-            font-size: 11px !important;
-            min-height: 0px !important;
-            height: auto !important;
-            padding: 4px 8px !important;
-            background-color: #161b22;
-            color: #c9d1d9;
-            width: 100%;
-        }
-        div.stButton > button:first-child:hover {
-            border-color: #ff4b4b;
-            color: #ff4b4b;
-            background-color: #21262d;
-        }
-        div.stButton > button:first-child:active {
-            background-color: #ff4b4b;
-            color: white;
-        }
+    /* UKŁAD TEKSTU I CHWYTÓW */
+    .song-row {
+        display: flex;
+        justify-content: flex-start;
+        align-items: baseline;
+        gap: 20px;
+        margin-bottom: 0px !important; /* Brak zbędnych odstępów */
+        padding-bottom: 2px;
+    }
 
-        /* SPECJALNY STYL DLA SIDEBARU */
-        [data-testid="stSidebar"] .stCaption {
-            color: #ff4b4b !important; /* Wyraźny czerwony kolor nagłówków sekcji */
-            font-weight: bold;
-            font-size: 14px !important;
-            margin-top: 15px !important;
-            border-bottom: 1px solid #30363d;
-        }
+    .lyrics-col {
+        flex: 0 0 auto;
+        min-width: 150px;
+        font-size: 16px;
+        color: #eeeeee;
+    }
 
-        [data-testid="stSidebar"] div.stButton > button:first-child {
-            font-size: 10px !important; /* Mała czcionka wewnątrz tagów */
-            padding: 2px 4px !important;
-            background-color: #21262d; /* Ciemniejsze tło przycisku */
-            color: #ecf2f8; /* Bardzo jasny tekst dla kontrastu */
-            border: 1px solid #3d444d;
-            margin-bottom: 2px;
-        }
+    /* CZERWONE CHWYTY */
+    .chords-col {
+        color: #ff4b4b !important; 
+        font-weight: bold;
+        font-size: 16px;
+    }
 
-        [data-testid="stSidebar"] div.stButton > button:first-child:hover {
-            border-color: #ff4b4b;
-            color: #ff4b4b;
-        }  
-        /* WYMUSZENIE JEDNEJ LINII NA MOBILE DLA NAWIGACJI */
-        [data-testid="stHorizontalBlock"]:has(button[key*="nav_"]) {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            align-items: center !important;
-            gap: 2px !important;
-        }
+    /* TAGI W SIDEBARZE */
+    [data-testid="stSidebar"] div.stButton > button:first-child {
+        font-size: 10px !important; 
+        padding: 2px 4px !important;
+        background-color: #1f2937 !important; 
+        color: #ffffff !important; 
+        border: 1px solid #4b5563 !important;
+        margin-bottom: 2px;
+    }
 
-        /* Zmniejszenie odstępów w kolumnach nawigacji */
-        [data-testid="stHorizontalBlock"]:has(button[key*="nav_"]) [data-testid="column"] {
-            width: min-content !important;
-            flex: 1 1 auto !important;
-            min-width: 0px !important;
-        }
-
-        /* Specjalne traktowanie tytułu w nawigacji, by nie znikał */
+    /* DOPASOWANIE DLA TELEFONÓW */
+    @media (max-width: 800px) {
         .song-title {
-            font-size: 14px !important; /* Mniejszy tytuł na mobile */
+            font-size: 16px !important;
+            min-width: 80px;
+            max-width: 140px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        
+        [data-testid="stHorizontalBlock"]:has(button[key*="nav_"]) [data-testid="column"] {
+            width: auto !important;
+            min-width: 0px !important;
+            flex: 1 1 auto !important;
+        }
 
-        /* Poprawka dla przycisków nawigacyjnych, by były mniejsze na telefonie */
-        @media (max-width: 600px) {
-            div.stButton > button:first-child {
-                padding: 2px 4px !important;
-                font-size: 12px !important;
-            }
-        }  
+        div.stButton > button:first-child {
+            padding: 2px 4px !important;
+            font-size: 14px !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -300,8 +259,7 @@ song = songs[st.session_state.current_idx]
 
 # Potem rysujemy kompaktowy nagłówek
 # Nowe proporcje: tytuł (c4) dostaje więcej miejsca, reszta jest ciasna
-c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1, 1, 1, 5, 1, 1, 1, 1])
-
+c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1, 1, 1, 10, 1, 1, 1, 1])
 with c1:
     if st.button("⬅️", key="nav_prev", use_container_width=True):
         set_song_by_idx(st.session_state.current_idx - 1); st.rerun()
@@ -342,16 +300,22 @@ st.markdown('<hr style="margin: 5px 0 15px 0; opacity: 0.2;">', unsafe_allow_htm
 
 html = '<div class="song-container">'
 for l in song["lyrics"]:
-    if "<br>" in l["text"] or "---" in l["text"]: continue
+    # Pomijamy znaczniki techniczne
+    if "<br>" in l["text"] or "---" in l["text"]: 
+        continue
+        
     clean_text = l["text"].strip()
+    # Transpozycja chwytów
     chds = [transpose_chord(c, st.session_state.transposition) for c in l.get("chords", [])]
     c_str = " ".join(chds)
     
-    if not clean_text and not chds: 
-        html += '<div style="height:15px"></div>'
-    else: 
-        # Ważne: chords-col jest zaraz za lyrics-col
+    # Renderujemy wiersz jeśli nie jest pusty
+    if clean_text or chds: 
         html += f'<div class="song-row"><div class="lyrics-col">{clean_text or "&nbsp;"}</div><div class="chords-col">{c_str or "&nbsp;"}</div></div>'
+    else:
+        # Odstęp między zwrotkami
+        html += '<div style="height: 12px;"></div>' 
+
 st.markdown(html + '</div>', unsafe_allow_html=True)
 
 # --- PODMIEŃ CAŁĄ SEKCJĘ 9 ---
