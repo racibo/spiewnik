@@ -7,8 +7,11 @@ from collections import Counter
 # ------------------------------
 # 1. Konfiguracja i Style
 # ------------------------------
-st.set_page_config(layout="wide", page_title="Śpiewnik Pro")
-
+st.set_page_config(
+    layout="wide", 
+    page_title="Śpiewnik Pro",
+    initial_sidebar_state="expanded"
+)
 st.markdown("""
     <style>
         .main .block-container { padding-top: 0.5rem !important; padding-bottom: 2rem; max-width: 95%; }
@@ -18,10 +21,22 @@ st.markdown("""
         .lyrics-col { flex: 0 1 auto; min-width: 250px; font-size: 18px; font-weight: 500; line-height: 1.2; padding-right: 30px; }
         .chords-col { flex: 0 0 150px; font-weight: bold; color: #ff4b4b; font-family: monospace; font-size: 17px; }
         #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
+/* MOBILE FIXES */
+        @media (max-width: 768px) {
+            .block-container { max-width: 100% !important; }
+            .song-row { flex-direction: row; }
+            .lyrics-col { min-width: 150px; font-size: 16px; padding-right: 15px; }
+            .chords-col { flex: 0 0 100px; font-size: 14px; }
+        }
+        @media (max-width: 600px) {
+            .lyrics-col { font-size: 14px; min-width: 120px; padding-right: 10px; }
+            .chords-col { flex: 0 0 80px; font-size: 12px; }
+            .song-title { font-size: 18px !important; }
+        }
     </style>
 """, unsafe_allow_html=True)
 
-ADMIN_PIN = st.secrets["ADMIN_PIN"]
+ADMIN_PIN = "1234"
 
 # ------------------------------
 # 2. Funkcje danych
@@ -125,11 +140,11 @@ song = songs[st.session_state.current_idx]
 
 h_col1, h_col2, h_col3 = st.columns([1.5, 3.5, 1.5])
 with h_col1:
-    c_n1, c_n2, c_n3, c_n4 = st.columns(4)
-    if c_n1.button("🎲"): set_song_by_idx(random.randint(0, len(songs)-1)); st.rerun()
-    if c_n2.button("⬅️"): set_song_by_idx(st.session_state.current_idx-1); st.rerun()
-    if c_n3.button("➡️"): set_song_by_idx(st.session_state.current_idx+1); st.rerun()
-    if c_n4.button("🆕"): set_song_by_idx(len(songs)-1); st.rerun()
+    c_n1, c_n2, c_n3, c_n4 = st.columns(4, gap="small")
+    if c_n1.button("🎲", use_container_width=True): set_song_by_idx(random.randint(0, len(songs)-1)); st.rerun()
+    if c_n2.button("⬅️", use_container_width=True): set_song_by_idx(st.session_state.current_idx-1); st.rerun()
+    if c_n3.button("➡️", use_container_width=True): set_song_by_idx(st.session_state.current_idx+1); st.rerun()
+    if c_n4.button("🔝", use_container_width=True): set_song_by_idx(len(songs)-1); st.rerun()
 with h_col2:
     st.markdown(f'<p class="song-title">{song["title"]}</p>', unsafe_allow_html=True)
 with h_col3:
@@ -179,12 +194,28 @@ with r_col1:
 with r_col2:
     st.write("Tagi:")
     current_ut = user_tags.get(song["title"], [])
-    if current_ut: st.caption(", ".join(current_ut))
+    
+    # Wyświetlanie tagów z możliwością usuwania
+    if current_ut:
+        for tag in current_ut:
+            col_tag, col_delete = st.columns([4, 1])
+            col_tag.caption(tag)
+            if col_delete.button("✕", key=f"delete_tag_{song['title']}_{tag}"):
+                current_ut.remove(tag)
+                user_tags[song["title"]] = current_ut
+                save_json("user_tags.json", user_tags)
+                st.rerun()
+    else:
+        st.caption("Brak tagów")
+    
+    # Dodawanie nowych tagów
     nt = st.text_input("Dodaj tag:", key=f"input_tag_{st.session_state.current_idx}")
     if st.button("Zapisz tag", key="btn_tag"):
         if nt and nt not in current_ut:
-            current_ut.append(nt); user_tags[song["title"]] = current_ut
-            save_json("user_tags.json", user_tags); st.rerun()
+            current_ut.append(nt)
+            user_tags[song["title"]] = current_ut
+            save_json("user_tags.json", user_tags)
+            st.rerun()
 
 # ------------------------------
 # 9. PANEL ZARZĄDZANIA (POPRAWIONE ODŚWIEŻANIE)
@@ -225,5 +256,4 @@ with st.expander("🛠️ PANEL ZARZĄDZANIA"):
         pin = st.text_input("PIN administratora:", type="password", key="admin_pin")
         if pin == ADMIN_PIN:
             if st.button("POTWIERDŹ USUNIĘCIE", key="btn_delete"):
-
                 songs.pop(st.session_state.current_idx); save_json("songs.json", songs); st.rerun()
