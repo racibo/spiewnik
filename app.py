@@ -83,35 +83,60 @@ st.markdown("""
             color: white;
         }
 
-        /* SPECJALNY STYL DLA SIDEBARU (MNIEJSZE TAGI) */
-        [data-testid="stSidebar"] div.stButton > button:first-child {
-            font-size: 10px !important; /* Mniejsza czcionka w menu */
-            padding: 3px 5px !important;
-            white-space: normal !important; /* Pozwól na zawijanie długich słów */
-            line-height: 1.1 !important;
-            height: auto !important;
-        }
-
-        /* TONACJA - STYL LINIOWY */
-        .tone-display {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 13px;
+        /* SPECJALNY STYL DLA SIDEBARU */
+        [data-testid="stSidebar"] .stCaption {
+            color: #ff4b4b !important; /* Wyraźny czerwony kolor nagłówków sekcji */
             font-weight: bold;
-            color: #888;
-            height: 100%;
-            margin: 0 5px;
+            font-size: 14px !important;
+            margin-top: 15px !important;
+            border-bottom: 1px solid #30363d;
         }
 
-        /* MOBILE FIXES */
-        @media (max-width: 600px) {
-            .lyrics-col { font-size: 15px; padding-right: 15px; }
-            .chords-col { font-size: 14px; }
-            .song-title { font-size: 18px !important; }
-            /* Na bardzo małych ekranach chwyty mogą spaść pod spód jeśli tekst jest długi */
+        [data-testid="stSidebar"] div.stButton > button:first-child {
+            font-size: 10px !important; /* Mała czcionka wewnątrz tagów */
+            padding: 2px 4px !important;
+            background-color: #21262d; /* Ciemniejsze tło przycisku */
+            color: #ecf2f8; /* Bardzo jasny tekst dla kontrastu */
+            border: 1px solid #3d444d;
+            margin-bottom: 2px;
         }
-    </style>
+
+        [data-testid="stSidebar"] div.stButton > button:first-child:hover {
+            border-color: #ff4b4b;
+            color: #ff4b4b;
+        }  
+        /* WYMUSZENIE JEDNEJ LINII NA MOBILE DLA NAWIGACJI */
+        [data-testid="stHorizontalBlock"]:has(button[key*="nav_"]) {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            align-items: center !important;
+            gap: 2px !important;
+        }
+
+        /* Zmniejszenie odstępów w kolumnach nawigacji */
+        [data-testid="stHorizontalBlock"]:has(button[key*="nav_"]) [data-testid="column"] {
+            width: min-content !important;
+            flex: 1 1 auto !important;
+            min-width: 0px !important;
+        }
+
+        /* Specjalne traktowanie tytułu w nawigacji, by nie znikał */
+        .song-title {
+            font-size: 14px !important; /* Mniejszy tytuł na mobile */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Poprawka dla przycisków nawigacyjnych, by były mniejsze na telefonie */
+        @media (max-width: 600px) {
+            div.stButton > button:first-child {
+                padding: 2px 4px !important;
+                font-size: 12px !important;
+            }
+        }  
+</style>
 """, unsafe_allow_html=True)
 
 ADMIN_PIN = "1234"
@@ -274,7 +299,8 @@ if not songs:
 song = songs[st.session_state.current_idx]
 
 # Potem rysujemy kompaktowy nagłówek
-c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([0.4, 0.4, 0.4, 3, 0.4, 0.6, 0.4, 0.4])
+# Nowe proporcje: tytuł (c4) dostaje więcej miejsca, reszta jest ciasna
+c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1, 1, 1, 5, 1, 1, 1, 1])
 
 with c1:
     if st.button("⬅️", key="nav_prev", use_container_width=True):
