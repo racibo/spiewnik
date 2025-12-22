@@ -3,6 +3,7 @@ import json
 import random
 import re
 from collections import Counter
+from datetime import datetime, timedelta
 
 # ------------------------------
 # 1. Konfiguracja i Style
@@ -12,6 +13,7 @@ st.set_page_config(
     page_title="Śpiewnik Pro",
     initial_sidebar_state="expanded"
 )
+
 st.markdown("""
     <style>
         .main .block-container { padding-top: 0.5rem !important; padding-bottom: 2rem; max-width: 95%; }
@@ -21,7 +23,8 @@ st.markdown("""
         .lyrics-col { flex: 0 1 auto; min-width: 250px; font-size: 18px; font-weight: 500; line-height: 1.2; padding-right: 30px; }
         .chords-col { flex: 0 0 150px; font-weight: bold; color: #ff4b4b; font-family: monospace; font-size: 17px; }
         #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
-/* MOBILE FIXES */
+        
+        /* MOBILE FIXES */
         @media (max-width: 768px) {
             .block-container { max-width: 100% !important; }
             .song-row { flex-direction: row; }
@@ -50,6 +53,24 @@ def load_json(filename, default):
 def save_json(filename, data):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
+def get_best_songs_all_time(ratings):
+    """Zwraca najlepiej ocenianą piosenkę wszech czasów"""
+    if not ratings: return None
+    best = max(ratings.items(), key=lambda x: x[1]["sum"]/x[1]["count"] if x[1]["count"]>0 else 0)
+    return best[0]
+
+def get_best_songs_week(ratings):
+    """Zwraca najlepiej ocenianą w ostatnich 7 dniach (symulacja)"""
+    if not ratings: return None
+    best = max(ratings.items(), key=lambda x: x[1]["sum"]/x[1]["count"] if x[1]["count"]>0 else 0)
+    return best[0]
+
+def get_best_songs_today(ratings):
+    """Zwraca najlepiej ocenianą dzisiaj (symulacja)"""
+    if not ratings: return None
+    best = max(ratings.items(), key=lambda x: x[1]["sum"]/x[1]["count"] if x[1]["count"]>0 else 0)
+    return best[0]
 
 songs = load_json("songs.json", [])
 ratings = load_json("ratings.json", {}) 
@@ -87,7 +108,7 @@ def set_song_by_idx(idx):
 # 5. SIDEBAR (Trzy chmury)
 # ------------------------------
 with st.sidebar:
-    st.title("📂 Biblioteka")
+    st.title("📚 Biblioteka")
     st.info(f"Piosenek w bazie: **{len(songs)}**")
     
     query = st.text_input("🔍 Szukaj piosenki:").lower()
@@ -112,7 +133,7 @@ with st.sidebar:
     else: st.caption("Brak dodanych tagów.")
 
     # 2. Chmura z TREŚCI
-    st.subheader("📝 Słowa z treści")
+    st.subheader("🎵 Słowa z treści")
     c1, c2 = st.columns(2)
     for i, (w, c) in enumerate(st.session_state.kw_lyrics):
         if (c1 if i%2==0 else c2).button(f"#{w}", key=f"side_l_{w}", use_container_width=True):
@@ -154,7 +175,7 @@ with h_col3:
     if t_c3.button("➕"): st.session_state.transposition += 1
 
 # ------------------------------
-# 7. RENDER PIEŚNI
+# 7. RENDER PIOSENKI
 # ------------------------------
 def transpose_chord(chord, steps):
     D = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"]
@@ -186,11 +207,12 @@ r_col1, r_col2 = st.columns([2, 1])
 with r_col1:
     stats = ratings.get(song["title"], {"sum": 0, "count": 0})
     avg = stats["sum"]/stats["count"] if stats["count"]>0 else 0
-    st.write(f"Ocena: **{avg:.1f}** ⭐ ({stats['count']} gł.)")
+    st.write(f"Ocena: **{avg:.1f}** ⭐ ({stats['count']} głosów)")
     score = st.radio("Twoja ocena:", [1,2,3,4,5], horizontal=True, key=f"vote_radio_{st.session_state.current_idx}")
     if st.button("Zatwierdź ocenę", key="btn_vote"):
         stats["sum"] += score; stats["count"] += 1; ratings[song["title"]] = stats
         save_json("ratings.json", ratings); st.rerun()
+
 with r_col2:
     st.write("Tagi:")
     current_ut = user_tags.get(song["title"], [])
@@ -216,6 +238,64 @@ with r_col2:
             user_tags[song["title"]] = current_ut
             save_json("user_tags.json", user_tags)
             st.rerun()
+
+# REKOMENDACJE
+st.markdown('<hr style="margin: 20px 0 10px 0; opacity: 0.1;">', unsafe_allow_html=True)
+st.subheader("📚 Polecane piosenki")
+
+rec_col1, rec_col2 = st.columns(2)
+
+# 5 LOSOWYCH PIOSENEK
+with rec_col1:
+    st.write("**🎲 5 losowych:**")
+    if "random_sample" not in st.session_state:
+        st.session_state.random_sample = random.sample(songs, min(5, len(songs)))
+    
+    for i, rs in enumerate(st.session_state.random_sample):
+        if st.button(rs["title"], key=f"random_btn_{i}", use_container_width=True):
+            idx = next((j for j, s in enumerate(songs) if s["title"] == rs["title"]), None)
+            if idx is not None:
+                set_song_by_idx(idx)
+                st.rerun()
+
+# TOP OCENY
+with rec_col2:
+    st.write("**⭐ TOP oceny:**")
+    
+    # Wszystkie czasy
+    best_all = get_best_songs_all_time(ratings)
+    if best_all:
+        all_time_stats = ratings[best_all]
+        avg_all = all_time_stats["sum"]/all_time_stats["count"]
+        if st.button(f"{best_all} ({avg_all:.1f}★)", key=f"best_all_btn", use_container_width=True):
+            idx = next((i for i, s in enumerate(songs) if s["title"] == best_all), None)
+            if idx is not None:
+                set_song_by_idx(idx)
+                st.rerun()
+    
+    # Ostatnie 7 dni
+    best_week = get_best_songs_week(ratings)
+    if best_week and best_week != best_all:
+        week_stats = ratings[best_week]
+        avg_week = week_stats["sum"]/week_stats["count"]
+        if st.button(f"{best_week} (7dni) ({avg_week:.1f}★)", key=f"best_week_btn", use_container_width=True):
+            idx = next((i for i, s in enumerate(songs) if s["title"] == best_week), None)
+            if idx is not None:
+                set_song_by_idx(idx)
+                st.rerun()
+    
+    # Dzisiaj
+    best_today = get_best_songs_today(ratings)
+    if best_today and best_today != best_all and best_today != best_week:
+        today_stats = ratings[best_today]
+        avg_today = today_stats["sum"]/today_stats["count"]
+        if st.button(f"{best_today} (dzisiaj) ({avg_today:.1f}★)", key=f"best_today_btn", use_container_width=True):
+            idx = next((i for i, s in enumerate(songs) if s["title"] == best_today), None)
+            if idx is not None:
+                set_song_by_idx(idx)
+                st.rerun()
+
+st.markdown('<hr style="margin: 20px 0 10px 0; opacity: 0.1;">', unsafe_allow_html=True)
 
 # ------------------------------
 # 9. PANEL ZARZĄDZANIA (POPRAWIONE ODŚWIEŻANIE)
@@ -248,9 +328,14 @@ with st.expander("🛠️ PANEL ZARZĄDZANIA"):
         n_t = st.text_input("Tytuł nowej piosenki:", key="new_title")
         n_l = st.text_area("Tekst | Akordy:", height=200, key="new_content")
         if st.button("Dodaj piosenkę", key="btn_add_song"):
-            parsed = [{"text": p.split("|")[0].strip(), "chords": p.split("|")[1].strip().split()} if "|" in p else {"text": p.strip(), "chords": []} for p in n_l.split("\n")]
-            songs.append({"title": n_t, "lyrics": parsed})
-            save_json("songs.json", songs); st.rerun()
+            if n_t and n_l:
+                parsed = [{"text": p.split("|")[0].strip(), "chords": p.split("|")[1].strip().split()} if "|" in p else {"text": p.strip(), "chords": []} for p in n_l.split("\n") if p.strip()]
+                songs.append({"title": n_t, "lyrics": parsed})
+                save_json("songs.json", songs)
+                st.success(f"Dodano piosenkę: {n_t}")
+                st.rerun()
+            else:
+                st.error("Uzupełnij tytuł i tekst!")
             
     with tab3:
         pin = st.text_input("PIN administratora:", type="password", key="admin_pin")
