@@ -14,85 +14,64 @@ st.set_page_config(
 )
 
 st.markdown("""
-    <style>
-    /* Główne tło */
+<style>
+    /* Główne tło i kontener */
     [data-testid="stAppViewContainer"] { background-color: #0e1117; }
     [data-testid="stSidebar"] { background-color: #010409; }
     
-    /* NAWIGACJA - WYMUSZENIE JEDNEJ LINII (MOBILE I PC) */
-    [data-testid="stHorizontalBlock"]:has(button[key*="nav_"]) {
-        display: flex !important;
-        flex-direction: row !important;
-        flex-wrap: nowrap !important;
-        align-items: center !important;
-        justify-content: center !important;
-        gap: 5px !important;
-    }
-
-    /* TYTUŁ PIOSENKI - RESPONSYWNY */
+    /* TYTUŁ PIOSENKI */
     .song-title {
         font-weight: bold;
         color: #ffffff;
         text-align: center;
         line-height: 1.1;
-        font-size: 32px !important; /* Duży na laptopie */
-        margin: 0px 10px !important;
+        font-size: 34px !important;
+        margin-bottom: 10px !important;
     }
 
-    /* UKŁAD TEKSTU I CHWYTÓW */
+    /* TEKST I CHWYTY */
     .song-row {
         display: flex;
         justify-content: flex-start;
         align-items: baseline;
         gap: 20px;
-        margin-bottom: 0px !important; /* Brak zbędnych odstępów */
-        padding-bottom: 2px;
+        margin-bottom: 0px !important;
     }
-
-    .lyrics-col {
-        flex: 0 0 auto;
-        min-width: 150px;
-        font-size: 16px;
-        color: #eeeeee;
-    }
-
-    /* CZERWONE CHWYTY */
-    .chords-col {
-        color: #ff4b4b !important; 
-        font-weight: bold;
-        font-size: 16px;
-    }
+    .lyrics-col { flex: 0 0 auto; min-width: 150px; font-size: 16px; color: #eee; }
+    .chords-col { color: #ff4b4b !important; font-weight: bold; font-size: 16px; }
 
     /* TAGI W SIDEBARZE */
     [data-testid="stSidebar"] div.stButton > button:first-child {
-        font-size: 10px !important; 
+        font-size: 10px !important;
         padding: 2px 4px !important;
-        background-color: #1f2937 !important; 
-        color: #ffffff !important; 
+        background-color: #1f2937 !important;
+        color: #ffffff !important;
         border: 1px solid #4b5563 !important;
-        margin-bottom: 2px;
     }
 
-    /* DOPASOWANIE DLA TELEFONÓW */
-    @media (max-width: 800px) {
-        .song-title {
-            font-size: 16px !important;
-            min-width: 80px;
-            max-width: 140px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        [data-testid="stHorizontalBlock"]:has(button[key*="nav_"]) [data-testid="column"] {
-            width: auto !important;
-            min-width: 0px !important;
-            flex: 1 1 auto !important;
-        }
+    /* UKRYWANIE ELEMENTÓW W ZALEŻNOŚCI OD EKRANU */
+    .mobile-nav { display: none; } /* Domyślnie ukryte */
 
-        div.stButton > button:first-child {
-            padding: 2px 4px !important;
-            font-size: 14px !important;
+    @media (max-width: 800px) {
+        /* Na telefonie ukrywamy górne kolumny przycisków */
+        div[data-testid="column"]:has(button[key*="nav_"]) {
+            display: none !important;
+        }
+        /* Pokazujemy dolny pasek nawigacji */
+        .mobile-nav { 
+            display: flex !important; 
+            flex-wrap: nowrap; 
+            justify-content: center; 
+            gap: 5px; 
+            padding: 10px 0;
+            border-top: 1px solid #333;
+        }
+        .song-title { font-size: 20px !important; }
+        
+        /* Zmniejszenie tagów pod piosenką (Sekcja 9) */
+        div[data-testid="stExpander"] button {
+            font-size: 11px !important;
+            padding: 2px !important;
         }
     }
 </style>
@@ -259,30 +238,16 @@ song = songs[st.session_state.current_idx]
 
 # Potem rysujemy kompaktowy nagłówek
 # Nowe proporcje: tytuł (c4) dostaje więcej miejsca, reszta jest ciasna
+# Górna linia (widoczna głównie na PC)
 c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1, 1, 1, 10, 1, 1, 1, 1])
-with c1:
-    if st.button("⬅️", key="nav_prev", use_container_width=True):
-        set_song_by_idx(st.session_state.current_idx - 1); st.rerun()
-with c2:
-    if st.button("🎲", key="nav_rand", use_container_width=True):
-        set_song_by_idx(random.randint(0, len(songs)-1)); st.rerun()
-with c3:
-    if st.button("🆕", key="nav_last_added", use_container_width=True):
-        set_song_by_idx(len(songs)-1); st.rerun()
-with c4:
-    st.markdown(f'<div class="song-title">{song["title"]}</div>', unsafe_allow_html=True)
-with c5:
-    if st.button("➖", key="nav_t_down", use_container_width=True):
-        st.session_state.transposition -= 1; st.rerun()
-with c6:
-    st.markdown(f'<div class="tone-display">{st.session_state.transposition:+}</div>', unsafe_allow_html=True)
-with c7:
-    if st.button("➕", key="nav_t_up", use_container_width=True):
-        st.session_state.transposition += 1; st.rerun()
-with c8:
-    if st.button("➡️", key="nav_next", use_container_width=True):
-        set_song_by_idx(st.session_state.current_idx + 1); st.rerun()
-
+with c1: st.button("⬅️", key="nav_prev", on_click=lambda: set_song_by_idx(st.session_state.current_idx - 1))
+with c2: st.button("🎲", key="nav_rand", on_click=lambda: set_song_by_idx(random.randint(0, len(songs)-1)))
+with c3: st.button("🆕", key="nav_last", on_click=lambda: set_song_by_idx(len(songs)-1))
+with c4: st.markdown(f'<div class="song-title">{song["title"]}</div>', unsafe_allow_html=True)
+with c5: st.button("➖", key="nav_t_down", on_click=lambda: exec('st.session_state.transposition -= 1'))
+with c6: st.markdown(f'<div style="text-align:center; color:#ff4b4b; font-weight:bold;">{st.session_state.transposition:+}</div>', unsafe_allow_html=True)
+with c7: st.button("➕", key="nav_t_up", on_click=lambda: exec('st.session_state.transposition += 1'))
+with c8: st.button("➡️", key="nav_next", on_click=lambda: set_song_by_idx(st.session_state.current_idx + 1))
 st.markdown('<hr style="margin: 5px 0 15px 0; opacity: 0.2;">', unsafe_allow_html=True)# ------------------------------
 # 8. TREŚĆ UTWORU
 # ------------------------------
@@ -317,7 +282,17 @@ for l in song["lyrics"]:
         html += '<div style="height: 12px;"></div>' 
 
 st.markdown(html + '</div>', unsafe_allow_html=True)
-
+# --- DODATKOWA NAWIGACJA MOBILNA (POD TEKSTEM) ---
+st.markdown('<div class="mobile-nav">', unsafe_allow_html=True)
+mb1, mb2, mb3, mb4, mb5, mb6, mb7 = st.columns([1,1,1,1,1,1,1])
+with mb1: st.button("⬅️", key="m_prev", on_click=lambda: set_song_by_idx(st.session_state.current_idx - 1))
+with mb2: st.button("🎲", key="m_rand", on_click=lambda: set_song_by_idx(random.randint(0, len(songs)-1)))
+with mb3: st.button("🆕", key="m_last", on_click=lambda: set_song_by_idx(len(songs)-1))
+with mb4: st.button("➖", key="m_t_down", on_click=lambda: exec('st.session_state.transposition -= 1'))
+with mb5: st.markdown(f'<div style="color:#ff4b4b; text-align:center;">{st.session_state.transposition:+}</div>', unsafe_allow_html=True)
+with mb6: st.button("➕", key="m_t_up", on_click=lambda: exec('st.session_state.transposition += 1'))
+with mb7: st.button("➡️", key="m_next", on_click=lambda: set_song_by_idx(st.session_state.current_idx + 1))
+st.markdown('</div>', unsafe_allow_html=True)
 # --- PODMIEŃ CAŁĄ SEKCJĘ 9 ---
 st.markdown('<hr style="margin: 30px 0 10px 0; opacity: 0.2;">', unsafe_allow_html=True)
 
@@ -367,7 +342,7 @@ with tab_vote:
 with tab_tags:
     current_ut = user_tags.get(song["title"], [])
     if current_ut:
-        cols = st.columns(3)
+        cols = st.columns(2)
         for i, tag in enumerate(current_ut):
             with cols[i%3]:
                 if st.button(f"✕ {tag}", key=f"del_tag_{i}", use_container_width=True):
