@@ -21,7 +21,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-ADMIN_PIN = "1234"
+ADMIN_PIN = st.secrets["ADMIN_PIN"]
 
 # ------------------------------
 # 2. Funkcje danych
@@ -225,4 +225,5 @@ with st.expander("🛠️ PANEL ZARZĄDZANIA"):
         pin = st.text_input("PIN administratora:", type="password", key="admin_pin")
         if pin == ADMIN_PIN:
             if st.button("POTWIERDŹ USUNIĘCIE", key="btn_delete"):
+
                 songs.pop(st.session_state.current_idx); save_json("songs.json", songs); st.rerun()
