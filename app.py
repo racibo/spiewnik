@@ -21,8 +21,8 @@ st.markdown("""
         
         /* Kontener główny - marginesy */
         .main .block-container { 
-            padding-top: 1rem !important; 
-            padding-bottom: 3rem; 
+            padding-top: 0rem !important; /* Maksymalnie do góry */
+            padding-bottom: 2rem;
             max-width: 100%; 
             padding-left: 1rem;
             padding-right: 1rem;
@@ -30,7 +30,7 @@ st.markdown("""
         
         /* TYTUŁ I NAWIGACJA */
         .song-title { 
-            font-size: 24px !important; 
+            font-size: 18px !important; /* Nieco mniejszy, by nie rozpychał linii */
             font-weight: bold; 
             margin: 0 !important; 
             line-height: 1.5; 
@@ -227,12 +227,12 @@ def render_expandable_cloud(items, key_prefix, on_click_action, initial_count=8)
 with st.sidebar:
     st.title("Biblioteka")
     
-    query = st.text_input("Szukaj:", placeholder="Tytuł...").lower()
+    query = st.text_input("Szukaj:", placeholder="Tytuł...", key="main_search_input").lower()
     if query:
         found = [i for i, s in enumerate(songs) if query in (s["title"] + " " + " ".join([l["text"] for l in s["lyrics"]])).lower()]
         if found:
-            sel = st.selectbox("Wyniki:", [songs[i]['title'] for i in found])
-            if st.button("Idź"): 
+            sel = st.selectbox("Wyniki:", [songs[i]['title'] for i in found], key="search_results_select")
+            if st.button("Idź", key="go_to_search_result"): 
                 set_song_by_idx(found[[songs[i]['title'] for i in found].index(sel)])
                 st.rerun()
 
@@ -257,52 +257,49 @@ with st.sidebar:
         render_expandable_cloud([w[0] for w in st.session_state.kw_titles], "side_t", lambda w: (set_song_by_idx(random.choice([j for j, s in enumerate(songs) if w in s["title"].lower()])), st.rerun())[1], initial_count=6)
     
     st.markdown("---")
-    if st.button("Odśwież", key="refresh_sidebar", use_container_width=True):
+    # To jest JEDYNY przycisk o tym kluczu w całym pliku:
+    if st.button("Odśwież bazę", key="refresh_sidebar", use_container_width=True):
         st.session_state.kw_lyrics = get_keywords(songs, "lyrics")
         st.session_state.kw_titles = get_keywords(songs, "title")
         st.rerun()
 
 # ------------------------------
-# 7. NAGŁÓWEK (Nowy Układ Liniowy)
+# 7. LOGIKA I NAGŁÓWEK (WSZYSTKO W JEDNEJ LINII)
 # ------------------------------
-if not songs: st.stop()
+if not songs: 
+    st.warning("Baza piosenek jest pusta.")
+    st.stop()
+
+# Najpierw definiujemy piosenkę
 song = songs[st.session_state.current_idx]
 
-# Stwórz 5 kolumn o różnych szerokościach
-c1, c2, c3, c4, c5 = st.columns([0.5, 0.5, 3, 0.5, 0.5])
+# Potem rysujemy kompaktowy nagłówek
+c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([0.4, 0.4, 0.4, 3, 0.4, 0.6, 0.4, 0.4])
 
 with c1:
-    st.button("⬅️", key="prev", use_container_width=True)
+    if st.button("⬅️", key="nav_prev", use_container_width=True):
+        set_song_by_idx(st.session_state.current_idx - 1); st.rerun()
 with c2:
-    st.button("🎲", key="rand", use_container_width=True)
-with c3:
-    st.markdown(f"<h2 style='text-align:center;'>{song['title']}</h2>", unsafe_allow_html=True)
-with c4:
-    st.button("🆕", key="newest", use_container_width=True)
-with c5:
-    st.button("➡️", key="next", use_container_width=True)
-
-# Pasek narzędzi (Losuj | Tonacja)
-# Zrobiony bardzo kompaktowo, pod tytułem
-t1, t2, t3, t4, t5 = st.columns([1, 1, 0.5, 0.8, 0.5])
-
-with t1:
-    if st.button("🎲 Losuj", use_container_width=True, key="sub_rand"): 
+    if st.button("🎲", key="nav_rand", use_container_width=True):
         set_song_by_idx(random.randint(0, len(songs)-1)); st.rerun()
-
-# Puste miejsce t2 dla odstępu
-
-# Sekcja Tonacji w jednej linii
-with t3:
-    if st.button("➖", key="tone_down", use_container_width=True): 
+with c3:
+    if st.button("🆕", key="nav_last_added", use_container_width=True):
+        set_song_by_idx(len(songs)-1); st.rerun()
+with c4:
+    st.markdown(f'<div class="song-title">{song["title"]}</div>', unsafe_allow_html=True)
+with c5:
+    if st.button("➖", key="nav_t_down", use_container_width=True):
         st.session_state.transposition -= 1; st.rerun()
-with t4:
-    st.markdown(f'<div class="tone-display">Tonacja: {st.session_state.transposition:+}</div>', unsafe_allow_html=True)
-with t5:
-    if st.button("➕", key="tone_up", use_container_width=True): 
+with c6:
+    st.markdown(f'<div class="tone-display">{st.session_state.transposition:+}</div>', unsafe_allow_html=True)
+with c7:
+    if st.button("➕", key="nav_t_up", use_container_width=True):
         st.session_state.transposition += 1; st.rerun()
+with c8:
+    if st.button("➡️", key="nav_next", use_container_width=True):
+        set_song_by_idx(st.session_state.current_idx + 1); st.rerun()
 
-# ------------------------------
+st.markdown('<hr style="margin: 5px 0 15px 0; opacity: 0.2;">', unsafe_allow_html=True)# ------------------------------
 # 8. TREŚĆ UTWORU
 # ------------------------------
 def transpose_chord(chord, steps):
@@ -331,90 +328,111 @@ for l in song["lyrics"]:
         html += f'<div class="song-row"><div class="lyrics-col">{clean_text or "&nbsp;"}</div><div class="chords-col">{c_str or "&nbsp;"}</div></div>'
 st.markdown(html + '</div>', unsafe_allow_html=True)
 
-# ------------------------------
-# 9. OCENY I TAGI
-# ------------------------------
-st.markdown('<hr style="margin: 40px 0 10px 0; opacity: 0.2;">', unsafe_allow_html=True)
+# --- PODMIEŃ CAŁĄ SEKCJĘ 9 ---
+st.markdown('<hr style="margin: 30px 0 10px 0; opacity: 0.2;">', unsafe_allow_html=True)
 
-tab_vote, tab_tags, tab_rec = st.tabs(["⭐ Oceny", "🏷️ Tagi", "📚 Polecane"])
+# SEKCJA POLECANE (Teraz na górze, bez zakładki)
+st.subheader("📚 Polecane utwory")
+c_rec1, c_rec2 = st.columns(2)
+with c_rec1:
+    st.caption("Losowe propozycje:")
+    # Zmieniona nazwa przycisku na "Odśwież listę"
+    if st.button("🔄 Odśwież listę", key="ref_rnd", use_container_width=True): 
+        st.session_state.random_sample = random.sample(songs, min(5, len(songs)))
+        st.rerun()
+    for i, rs in enumerate(st.session_state.random_sample):
+        if st.button(rs["title"], key=f"r_{i}", use_container_width=True): 
+            set_song_by_idx(next((j for j, s in enumerate(songs) if s["title"] == rs["title"]), 0))
+            st.rerun()
+with c_rec2:
+    st.caption("Najlepiej oceniane (TOP):")
+    ba = get_best_songs_all_time(ratings)
+    if ba:
+        if st.button(f"🏆 {ba}", key="top_song_btn", use_container_width=True): 
+            set_song_by_idx(next((i for i, s in enumerate(songs) if s["title"] == ba), 0))
+            st.rerun()
+    else:
+        st.write("Brak ocen.")
+
+st.markdown("---")
+
+# OCENY I TAGI (W zakładkach pod polecanymi)
+tab_vote, tab_tags = st.tabs(["⭐ Oceń tę piosenkę", "🏷️ Tagi użytkownika"])
 
 with tab_vote:
     col_v1, col_v2 = st.columns([2, 1])
     with col_v1:
         stats = ratings.get(song["title"], {"sum": 0, "count": 0})
         avg = stats["sum"]/stats["count"] if stats["count"]>0 else 0
-        st.write(f"Ocena: **{avg:.1f}** ({stats['count']} gł.)")
-        score = st.radio("Twoja ocena:", [1,2,3,4,5], horizontal=True, label_visibility="collapsed")
-        if st.button("Zapisz", use_container_width=True, key="btn_zapisz_ocene"):
+        st.write(f"Średnia ocena: **{avg:.1f}**")
+        score = st.radio("Twoja ocena:", [1,2,3,4,5], horizontal=True, key="rating_radio")
+        if st.button("Zapisz ocenę", key="btn_zapisz_ocene_main"):
             stats["sum"] += score; stats["count"] += 1; ratings[song["title"]] = stats
             save_json("ratings.json", ratings)
             st.rerun()
-            
-    with col_v2:
-        st.info("Oceń, by dostać tagi.")
-
     if score in RATING_TAGS:
-        st.caption("Sugerowane:")
+        st.caption("Sugerowane tagi:")
         render_expandable_cloud(RATING_TAGS[score], f"sug_tag_{score}", lambda t: (user_tags.setdefault(song["title"], []).append(t) or save_json("user_tags.json", user_tags) or st.rerun()) if t not in user_tags.get(song["title"], []) else None, initial_count=8)
 
 with tab_tags:
     current_ut = user_tags.get(song["title"], [])
     if current_ut:
-        st.caption("Usuń tag:")
         cols = st.columns(3)
         for i, tag in enumerate(current_ut):
             with cols[i%3]:
-                if st.button(f"✕ {tag}", key=f"del_{i}_{tag}", use_container_width=True):
+                if st.button(f"✕ {tag}", key=f"del_tag_{i}", use_container_width=True):
                     current_ut.remove(tag); user_tags[song["title"]] = current_ut; save_json("user_tags.json", user_tags); st.rerun()
-    else: st.caption("Brak tagów.")
     
-    st.markdown("---")
-    nt = st.text_input("Dodaj tag:", label_visibility="collapsed", placeholder="Nowy tag...")
-    if st.button("Dodaj", use_container_width=True):
+    nt = st.text_input("Dodaj własny tag:", key="new_tag_input")
+    if st.button("Dodaj tag", key="add_tag_btn"):
         if nt and nt not in current_ut:
             current_ut.append(nt); user_tags[song["title"]] = current_ut; save_json("user_tags.json", user_tags); st.rerun()
-
-with tab_rec:
-    c_rec1, c_rec2 = st.columns(2)
-    with c_rec1:
-        st.caption("Losowe:")
-        if st.button("Nowe", key="ref_rnd", use_container_width=True): st.session_state.random_sample = random.sample(songs, min(5, len(songs))); st.rerun()
-        for i, rs in enumerate(st.session_state.random_sample):
-            if st.button(rs["title"], key=f"r_{i}", use_container_width=True): set_song_by_idx(next((j for j, s in enumerate(songs) if s["title"] == rs["title"]), 0)); st.rerun()
-    with c_rec2:
-        st.caption("TOP:")
-        ba = get_best_songs_all_time(ratings)
-        if ba and st.button(f"🏆 {ba}", use_container_width=True): set_song_by_idx(next((i for i, s in enumerate(songs) if s["title"] == ba), 0)); st.rerun()
-
 # ------------------------------
-# 10. PANEL ADMIN
+# 10. PANEL ADMIN (Edycja i Dodawanie)
 # ------------------------------
-with st.expander("🛠️ Admin"):
-    tab_e1, tab_e2 = st.tabs(["Edycja", "Opcje"])
-    with tab_e1:
-        et = st.text_input("Tytuł:", value=song["title"])
+with st.expander("🛠️ Panel Administracyjny"):
+    tab_edit, tab_add, tab_del = st.tabs(["📝 Edytuj bieżący", "➕ Dodaj piosenkę", "🗑️ Usuń"])
+    
+    with tab_edit:
+        # Dodajemy indeks do klucza, aby wymusić odświeżenie danych przy zmianie piosenki
+        curr_id = st.session_state.current_idx 
+        
+        et = st.text_input("Tytuł:", value=song["title"], key=f"edit_title_{curr_id}")
+        
         el = [f"{l['text']} | {' '.join(l.get('chords', []))}" for l in song["lyrics"] if "<br>" not in l["text"]]
-        nc = st.text_area("Treść:", value="\n".join(el), height=200)
-        if st.button("Zapisz", use_container_width=True, key="btn_zapisz_edycje"):
-            if et != song["title"]:
-                songs[st.session_state.current_idx]["title"] = et
-                if song["title"] in ratings: ratings[et] = ratings.pop(song["title"])
-                if song["title"] in user_tags: user_tags[et] = user_tags.pop(song["title"])
+        nc = st.text_area("Treść (Tekst | Chwyty):", value="\n".join(el), height=200, key=f"edit_area_{curr_id}")
+        
+        if st.button("Zapisz zmiany", key=f"btn_save_edit_{curr_id}"):
             nl = []
             for line in nc.split("\n"):
                 p = line.split("|")
                 nl.append({"text": p[0].strip(), "chords": p[1].strip().split()} if len(p)>1 else {"text": line.strip(), "chords": []})
-            songs[st.session_state.current_idx]["lyrics"] = nl
-            save_json("songs.json", songs); save_json("ratings.json", ratings); save_json("user_tags.json", user_tags); st.rerun()
-    
-    with tab_e2:
-        if st.text_input("PIN", type="password", key="admin_pin_input") == ADMIN_PIN:
-            # Poprawione wcięcia i klucz przycisku
-            if st.button("USUŃ UTWÓR", key=f"btn_delete_{st.session_state.current_idx}", type="primary", use_container_width=True):
-                t_to_del = songs[st.session_state.current_idx]["title"]
-                songs.pop(st.session_state.current_idx)
-                if t_to_del in ratings: del ratings[t_to_del]
-                if t_to_del in user_tags: del user_tags[t_to_del]
+            
+            songs[st.session_state.current_idx] = {"title": et, "lyrics": nl}
+            save_json("songs.json", songs)
+            st.success("Zmiany zapisane!") # Dodatkowe potwierdzenie
+            st.rerun()
+
+    with tab_add:
+        st.subheader("Nowa piosenka")
+        new_t = st.text_input("Tytuł piosenki:", key="add_new_title")
+        new_l = st.text_area("Treść (Format: Tekst | Chwyty):", placeholder="Wpisz tekst piosenki...\nMożesz dodać chwyty po kresce |", height=200, key="add_new_area")
+        if st.button("Dodaj do biblioteki", key="btn_add_new_song"):
+            if new_t and new_l:
+                parsed_lyrics = []
+                for line in new_l.split("\n"):
+                    parts = line.split("|")
+                    parsed_lyrics.append({"text": parts[0].strip(), "chords": parts[1].strip().split() if len(parts)>1 else []})
+                songs.append({"title": new_t, "lyrics": parsed_lyrics})
                 save_json("songs.json", songs)
-                st.session_state.current_idx = 0
-                st.rerun()
+                st.success(f"Dodano: {new_t}")
+                set_song_by_idx(len(songs)-1); st.rerun()
+            else:
+                st.error("Podaj tytuł i treść!")
+
+    with tab_del:
+        if st.text_input("PIN blokady", type="password", key="del_pin") == ADMIN_PIN:
+            if st.button("POTWIERDZAM USUNIĘCIE", type="primary", use_container_width=True):
+                songs.pop(st.session_state.current_idx)
+                save_json("songs.json", songs)
+                set_song_by_idx(0); st.rerun()
