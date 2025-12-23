@@ -100,7 +100,7 @@ def load_songs_from_sheets():
         return []
 
 def save_song_to_sheets(row_idx, title, lyrics, ratings_sum, ratings_count, tags):
-    """Zapisuje piosenkę do arkusza"""
+    """Zapisuje piosenkę do arkusza (aktualizuje istniejący wiersz)"""
     if not ws:
         return False
     
@@ -112,10 +112,12 @@ def save_song_to_sheets(row_idx, title, lyrics, ratings_sum, ratings_count, tags
         
         tags_str = ", ".join(tags)
         
-        # Uniwersalny sposób - bezpośrednie przypisanie do komórek
-        ws.update([
-            [title, lyrics_str, str(ratings_sum), str(ratings_count), tags_str]
-        ], f"A{row_idx}")
+        # Aktualizujemy kolumny A-E w wybranym wierszu
+        ws.update(
+            [[title, lyrics_str, str(ratings_sum), str(ratings_count), tags_str]],
+            f"A{row_idx}:E{row_idx}",
+            raw=False
+        )
         return True
     except Exception as e:
         st.error(f"Błąd podczas zapisywania: {e}")
@@ -647,3 +649,4 @@ with st.expander("🛠️ Panel Administracyjny"):
                     st.rerun()
         elif pin_input:
             st.error("Błędny PIN!")
+
