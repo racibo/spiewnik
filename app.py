@@ -370,39 +370,6 @@ song = st.session_state.songs[st.session_state.current_idx]
 
 st.markdown(f'<div class="song-title">{song["title"]}</div>', unsafe_allow_html=True)
 
-# Kompaktowe przyciski w 2 rzędach po 3-4 przyciski
-row1_c1, row1_c2, row1_c3, row1_c4 = st.columns([0.5, 0.5, 0.5, 4])
-with row1_c1:
-    if st.button("⬅️", key="nav_prev"):
-        set_song_by_idx(st.session_state.current_idx - 1)
-        st.rerun()
-with row1_c2:
-    if st.button("🎲", key="nav_rand"):
-        set_song_by_idx(random.randint(0, len(st.session_state.songs)-1))
-        st.rerun()
-with row1_c3:
-    if st.button("🔝", key="nav_last"):
-        set_song_by_idx(len(st.session_state.songs)-1)
-        st.rerun()
-with row1_c4:
-    if st.button("➡️", key="nav_next"):
-        set_song_by_idx(st.session_state.current_idx + 1)
-        st.rerun()
-
-row2_c1, row2_c2, row2_c3, row2_c4 = st.columns([0.5, 0.5, 1.5, 3])
-with row2_c1:
-    if st.button("➖", key="nav_t_down"):
-        st.session_state.transposition -= 1
-        st.rerun()
-with row2_c2:
-    st.markdown(f'<div style="text-align:center; color:#ff4b4b; font-weight:bold; padding-top:4px; font-size:14px;">{st.session_state.transposition:+}</div>', unsafe_allow_html=True)
-with row2_c3:
-    if st.button("➕", key="nav_t_up"):
-        st.session_state.transposition += 1
-        st.rerun()
-with row2_c4:
-    pass
-
 st.markdown('<hr style="margin: 5px 0 15px 0; opacity: 0.2;">', unsafe_allow_html=True)
 
 def transpose_chord(chord, steps):
@@ -431,6 +398,41 @@ for l in song["lyrics"]:
         html += '<div style="height: 12px;"></div>'
 
 st.markdown(html + '</div>', unsafe_allow_html=True)
+
+st.markdown('<hr style="margin: 15px 0 15px 0; opacity: 0.2;">', unsafe_allow_html=True)
+
+# NAWIGACJA - PRZYCISKI POD TEKSTEM PIOSENKI
+st.markdown("**Nawigacja:**")
+nb1, nb2, nb3, nb4 = st.columns(4)
+with nb1:
+    if st.button("⬅️ Wstecz", key="nav_prev", use_container_width=True):
+        set_song_by_idx(st.session_state.current_idx - 1)
+        st.rerun()
+with nb2:
+    if st.button("🎲 Losowa", key="nav_rand", use_container_width=True):
+        set_song_by_idx(random.randint(0, len(st.session_state.songs)-1))
+        st.rerun()
+with nb3:
+    if st.button("🔝 Ostatnia", key="nav_last", use_container_width=True):
+        set_song_by_idx(len(st.session_state.songs)-1)
+        st.rerun()
+with nb4:
+    if st.button("➡️ Dalej", key="nav_next", use_container_width=True):
+        set_song_by_idx(st.session_state.current_idx + 1)
+        st.rerun()
+
+# Transponowanie
+nt1, nt2, nt3 = st.columns(3)
+with nt1:
+    if st.button("➖ Niżej", key="nav_t_down", use_container_width=True):
+        st.session_state.transposition -= 1
+        st.rerun()
+with nt2:
+    st.markdown(f'<div style="text-align:center; color:#ff4b4b; font-weight:bold; padding-top: 10px;">Transponuj: {st.session_state.transposition:+}</div>', unsafe_allow_html=True)
+with nt3:
+    if st.button("➕ Wyżej", key="nav_t_up", use_container_width=True):
+        st.session_state.transposition += 1
+        st.rerun()
 
 st.markdown('<hr style="margin: 15px 0 15px 0; opacity: 0.2;">', unsafe_allow_html=True)
 
