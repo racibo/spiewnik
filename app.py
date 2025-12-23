@@ -68,7 +68,6 @@ def load_songs_from_sheets():
                                     chords = chords.split()
                                 lyrics.append({"text": text, "chords": chords})
                     except:
-                        # Fallback jeśli JSON jest nieprawidłowy
                         lyrics.append({"text": lyrics_raw, "chords": []})
                 else:
                     # Stary format: Tekst | Chwyty
@@ -112,7 +111,6 @@ def save_song_to_sheets(row_idx, title, lyrics, ratings_sum, ratings_count, tags
         
         tags_str = ", ".join(tags)
         
-        # Aktualizujemy kolumny A-E w wybranym wierszu
         ws.update(
             [[title, lyrics_str, str(ratings_sum), str(ratings_count), tags_str]],
             f"A{row_idx}:E{row_idx}",
@@ -225,21 +223,15 @@ st.markdown("""
         border: 1px solid #4b5563 !important;
     }
 
-    /* UKRYWANIE ELEMENTÓW W ZALEŻNOŚCI OD EKRANU */
-    .mobile-nav { display: none; }
+    /* DESKTOP - Ukrywanie mobilnej nawigacji */
+    .desktop-nav { display: flex; }
+    .mobile-only-section { display: none; }
 
     @media (max-width: 800px) {
-        div[data-testid="column"]:has(button[key*="nav_"]) {
-            display: none !important;
-        }
-        .mobile-nav { 
-            display: flex !important; 
-            flex-wrap: nowrap; 
-            justify-content: center; 
-            gap: 5px; 
-            padding: 10px 0;
-            border-top: 1px solid #333;
-        }
+        /* MOBILE */
+        .desktop-nav { display: none !important; }
+        .mobile-only-section { display: block !important; }
+        
         .song-title { font-size: 20px !important; }
         
         div[data-testid="stExpander"] button {
@@ -292,6 +284,22 @@ def get_best_songs_all_time(songs):
         key=lambda x: x["ratings_sum"] / x["ratings_count"] if x["ratings_count"] > 0 else 0
     )
     return best["title"] if best["ratings_count"] > 0 else None
+
+def get_most_common_tags(songs, limit=10):
+    """Zwraca najczęściej używane tagi"""
+    all_tags = []
+    for song in songs:
+        all_tags.extend(song.get("tags", []))
+    
+    if not all_tags:
+        return []
+    
+    return [t[0] for t in Counter(all_tags).most_common(limit)]
+
+def get_most_visited_songs(songs, limit=10):
+    """Zwraca najczęściej odwiedzane piosenki (po liczbie ocen)"""
+    rated_songs = [s for s in songs if s["ratings_count"] > 0]
+    return sorted(rated_songs, key=lambda x: x["ratings_count"], reverse=True)[:limit]
 
 # Reload danych
 def reload_songs():
@@ -418,7 +426,8 @@ if not st.session_state.songs:
 
 song = st.session_state.songs[st.session_state.current_idx]
 
-# Górna linia nawigacji
+# DESKTOP - Górna linia nawigacji (widoczna tylko na desktopie)
+st.markdown('<div class="desktop-nav">', unsafe_allow_html=True)
 c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1, 1, 1, 10, 1, 1, 1, 1])
 with c1:
     if st.button("⬅️", key="nav_prev"):
@@ -448,8 +457,12 @@ with c8:
     if st.button("➡️", key="nav_next"):
         set_song_by_idx(st.session_state.current_idx + 1)
         st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('<hr style="margin: 5px 0 15px 0; opacity: 0.2;">', unsafe_allow_html=True)
+
+# MOBILE - Tylko tytuł
+st.markdown(f'<div class="song-title mobile-only-section">{song["title"]}</div>', unsafe_allow_html=True)
 
 # ------------------------------
 # 8. TREŚĆ UTWORU
@@ -482,38 +495,141 @@ for l in song["lyrics"]:
 
 st.markdown(html + '</div>', unsafe_allow_html=True)
 
-# Dodatkowa nawigacja mobilna
-st.markdown('<div class="mobile-nav">', unsafe_allow_html=True)
+st.markdown('<hr style="margin: 15px 0 15px 0; opacity: 0.2;">', unsafe_allow_html=True)
+
+# ========================================
+# SEKCJA POD TEKSTEM - Oceny i Tagi
+# ========================================
+
+st.subheader("⭐ Oceń tę piosenkę")
+
+col_v1, col_v2 = st.columns([2, 1])
+with col_v1:
+    avg = song["ratings_sum"] / song["ratings_count"] if song["ratings_count"] > 0 else 0
+    st.write(f"Średnia ocena: **{avg:.1f}** ({song['ratings_count']} głosów)")
+    score = st.radio("Twoja ocena:", [1,2,3,4,5], horizontal=True, key="rating_radio")
+    if st.button("Zapisz ocenę", key="btn_zapisz_ocene_main", use_container_width=True):
+        new_sum = song["ratings_sum"] + score
+        new_count = song["ratings_count"] + 1
+        
+        if update_song_ratings(song["row"], new_sum, new_count):
+            st.success("Ocena zapisana!")
+            reload_songs()
+            st.session_state.current_idx = next((i for i, s in enumerate(st.session_state.songs) if s["title"] == song["title"]), 0)
+            st.rerun()
+
+if score in RATING_TAGS:
+    st.caption("Sugerowane tagi:")
+    render_expandable_cloud(RATING_TAGS[score], f"sug_tag_{score}", 
+        lambda t: (song["tags"].append(t) or update_song_tags(song["row"], song["tags"]) or reload_songs() or st.rerun()) 
+        if t not in song.get("tags", []) else None, 
+        initial_count=8)
+
+st.markdown("---")
+
+# SEKCJA TAGÓW
+st.subheader("🏷️ Oznacz piosenkę etykietą")
+
+# Pobierz 3 najczęstsze tagi
+most_common_tags = get_most_common_tags(st.session_state.songs, limit=3)
+suggested_tags_state = f"show_all_tags"
+
+st.caption("Najczęściej używane tagi:")
+cols = st.columns(len(most_common_tags) + 1) if most_common_tags else []
+
+for i, tag in enumerate(most_common_tags):
+    with cols[i]:
+        if st.button(tag, key=f"quick_tag_{i}", use_container_width=True):
+            if tag not in song.get("tags", []):
+                song["tags"].append(tag)
+                update_song_tags(song["row"], song["tags"])
+                reload_songs()
+                st.rerun()
+            else:
+                st.info(f"Tag '{tag}' już jest przypisany")
+
+# Przycisk "Więcej" / "Mniej"
+if len(most_common_tags) > 0:
+    with cols[-1]:
+        if st.session_state.get(suggested_tags_state, False):
+            if st.button("Mniej ▲", key="hide_tags", use_container_width=True):
+                st.session_state[suggested_tags_state] = False
+                st.rerun()
+        else:
+            if st.button("Więcej ▼", key="show_tags", use_container_width=True):
+                st.session_state[suggested_tags_state] = True
+                st.rerun()
+
+# Wszystkie tagi
+if st.session_state.get(suggested_tags_state, False):
+    st.caption("Wszystkie dostępne tagi:")
+    all_tags_list = get_most_common_tags(st.session_state.songs, limit=50)
+    render_expandable_cloud(all_tags_list, "all_tags",
+        lambda t: (song["tags"].append(t) or update_song_tags(song["row"], song["tags"]) or reload_songs() or st.rerun())
+        if t not in song.get("tags", []) else None,
+        initial_count=12)
+
+# Obecne tagi
+st.caption("Tagi tej piosenki:")
+current_tags = song.get("tags", [])
+if current_tags:
+    cols = st.columns(3)
+    for i, tag in enumerate(current_tags):
+        with cols[i % 3]:
+            if st.button(f"✕ {tag}", key=f"del_tag_{i}", use_container_width=True):
+                song["tags"].remove(tag)
+                update_song_tags(song["row"], song["tags"])
+                reload_songs()
+                st.rerun()
+else:
+    st.info("Brak przypisanych tagów")
+
+# Dodaj własny tag
+nt = st.text_input("Dodaj własny tag:", key="new_tag_input")
+if st.button("Dodaj tag", key="add_tag_btn", use_container_width=True):
+    if nt and nt not in current_tags:
+        song["tags"].append(nt)
+        update_song_tags(song["row"], song["tags"])
+        reload_songs()
+        st.rerun()
+
+st.markdown("---")
+
+# ========================================
+# MOBILE - Przyciski nawigacyjne POD TEKSTEM
+# ========================================
+st.markdown('<div class="mobile-only-section">', unsafe_allow_html=True)
+st.caption("Nawigacja:")
 mb1, mb2, mb3, mb4, mb5, mb6, mb7 = st.columns([1,1,1,1,1,1,1])
 with mb1:
-    if st.button("⬅️", key="m_prev"):
+    if st.button("⬅️", key="m_prev", use_container_width=True):
         set_song_by_idx(st.session_state.current_idx - 1)
         st.rerun()
 with mb2:
-    if st.button("🎲", key="m_rand"):
+    if st.button("🎲", key="m_rand", use_container_width=True):
         set_song_by_idx(random.randint(0, len(st.session_state.songs)-1))
         st.rerun()
 with mb3:
-    if st.button("🆕", key="m_last"):
+    if st.button("🆕", key="m_last", use_container_width=True):
         set_song_by_idx(len(st.session_state.songs)-1)
         st.rerun()
 with mb4:
-    if st.button("➖", key="m_t_down"):
+    if st.button("➖", key="m_t_down", use_container_width=True):
         st.session_state.transposition -= 1
         st.rerun()
 with mb5:
-    st.markdown(f'<div style="color:#ff4b4b; text-align:center;">{st.session_state.transposition:+}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="color:#ff4b4b; text-align:center; padding-top: 8px;">{st.session_state.transposition:+}</div>', unsafe_allow_html=True)
 with mb6:
-    if st.button("➕", key="m_t_up"):
+    if st.button("➕", key="m_t_up", use_container_width=True):
         st.session_state.transposition += 1
         st.rerun()
 with mb7:
-    if st.button("➡️", key="m_next"):
+    if st.button("➡️", key="m_next", use_container_width=True):
         set_song_by_idx(st.session_state.current_idx + 1)
         st.rerun()
 st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown('<hr style="margin: 30px 0 10px 0; opacity: 0.2;">', unsafe_allow_html=True)
+st.markdown("---")
 
 # Sekcja polecane
 st.subheader("📚 Polecane utwory")
@@ -539,57 +655,11 @@ with c_rec2:
 
 st.markdown("---")
 
-# OCENY I TAGI
-tab_vote, tab_tags = st.tabs(["⭐ Oceń tę piosenkę", "🏷️ Tagi użytkownika"])
-
-with tab_vote:
-    col_v1, col_v2 = st.columns([2, 1])
-    with col_v1:
-        avg = song["ratings_sum"] / song["ratings_count"] if song["ratings_count"] > 0 else 0
-        st.write(f"Średnia ocena: **{avg:.1f}** ({song['ratings_count']} głosów)")
-        score = st.radio("Twoja ocena:", [1,2,3,4,5], horizontal=True, key="rating_radio")
-        if st.button("Zapisz ocenę", key="btn_zapisz_ocene_main"):
-            new_sum = song["ratings_sum"] + score
-            new_count = song["ratings_count"] + 1
-            
-            if update_song_ratings(song["row"], new_sum, new_count):
-                st.success("Ocena zapisana!")
-                reload_songs()
-                st.session_state.current_idx = next((i for i, s in enumerate(st.session_state.songs) if s["title"] == song["title"]), 0)
-                st.rerun()
-    
-    if score in RATING_TAGS:
-        st.caption("Sugerowane tagi:")
-        render_expandable_cloud(RATING_TAGS[score], f"sug_tag_{score}", 
-            lambda t: (song["tags"].append(t) or update_song_tags(song["row"], song["tags"]) or reload_songs() or st.rerun()) 
-            if t not in song.get("tags", []) else None, 
-            initial_count=8)
-
-with tab_tags:
-    current_tags = song.get("tags", [])
-    if current_tags:
-        cols = st.columns(3)
-        for i, tag in enumerate(current_tags):
-            with cols[i % 3]:
-                if st.button(f"✕ {tag}", key=f"del_tag_{i}", use_container_width=True):
-                    song["tags"].remove(tag)
-                    update_song_tags(song["row"], song["tags"])
-                    reload_songs()
-                    st.rerun()
-    
-    nt = st.text_input("Dodaj własny tag:", key="new_tag_input")
-    if st.button("Dodaj tag", key="add_tag_btn"):
-        if nt and nt not in current_tags:
-            song["tags"].append(nt)
-            update_song_tags(song["row"], song["tags"])
-            reload_songs()
-            st.rerun()
-
 # ------------------------------
 # 9. PANEL ADMIN
 # ------------------------------
 with st.expander("🛠️ Panel Administracyjny"):
-    tab_edit, tab_add, tab_del = st.tabs(["✏️ Edytuj bieżący", "➕ Dodaj piosenkę", "🗑️ Usuń"])
+    tab_edit, tab_add, tab_del, tab_stats = st.tabs(["✏️ Edytuj bieżący", "➕ Dodaj piosenkę", "🗑️ Usuń", "📊 Statystyki"])
     
     with tab_edit:
         curr_id = st.session_state.current_idx
@@ -599,7 +669,7 @@ with st.expander("🛠️ Panel Administracyjny"):
         el = [f"{l['text']} | {' '.join(l.get('chords', []))}" for l in song["lyrics"]]
         nc = st.text_area("Treść (Tekst | Chwyty):", value="\n".join(el), height=200, key=f"edit_area_{curr_id}")
         
-        if st.button("Zapisz zmiany", key=f"btn_save_edit_{curr_id}"):
+        if st.button("Zapisz zmiany", key=f"btn_save_edit_{curr_id}", use_container_width=True):
             nl = []
             for line in nc.split("\n"):
                 p = line.split("|", 1)
@@ -619,7 +689,7 @@ with st.expander("🛠️ Panel Administracyjny"):
         new_l = st.text_area("Treść (Format: Tekst | Chwyty):", 
                             placeholder="Wpisz tekst piosenki...\nMożesz dodać chwyty po kresce |", 
                             height=200, key="add_new_area")
-        if st.button("Dodaj do biblioteki", key="btn_add_new_song"):
+        if st.button("Dodaj do biblioteki", key="btn_add_new_song", use_container_width=True):
             if new_t and new_l:
                 parsed_lyrics = []
                 for line in new_l.split("\n"):
@@ -649,4 +719,47 @@ with st.expander("🛠️ Panel Administracyjny"):
                     st.rerun()
         elif pin_input:
             st.error("Błędny PIN!")
+
+    with tab_stats:
+        st.subheader("📊 Statystyki")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("📚 Liczba piosenek", len(st.session_state.songs))
+        
+        with col2:
+            rated_songs = [s for s in st.session_state.songs if s["ratings_count"] > 0]
+            st.metric("⭐ Oceniane piosenki", len(rated_songs))
+        
+        with col3:
+            total_ratings = sum(s["ratings_count"] for s in st.session_state.songs)
+            st.metric("🗳️ Łącznie ocen", total_ratings)
+        
+        with col4:
+            avg_rating = sum(s["ratings_sum"] for s in st.session_state.songs) / max(total_ratings, 1) if total_ratings > 0 else 0
+            st.metric("⏱️ Średnia ocena", f"{avg_rating:.2f}")
+        
+        st.markdown("---")
+        
+        st.caption("🔥 Najczęściej odwiedzane piosenki:")
+        most_visited = get_most_visited_songs(st.session_state.songs, limit=10)
+        if most_visited:
+            for i, s in enumerate(most_visited, 1):
+                avg = s["ratings_sum"] / s["ratings_count"] if s["ratings_count"] > 0 else 0
+                st.write(f"{i}. **{s['title']}** - {s['ratings_count']} ocen (średnia: {avg:.1f})")
+        
+        st.markdown("---")
+        
+        st.caption("🏆 Najczęściej używane tagi:")
+        all_tags_list = get_most_common_tags(st.session_state.songs, limit=20)
+        if all_tags_list:
+            tag_counts = Counter()
+            for s in st.session_state.songs:
+                tag_counts.update(s.get("tags", []))
+            
+            for i, (tag, count) in enumerate(tag_counts.most_common(20), 1):
+                st.write(f"{i}. **{tag}** - {count}x")
+        else:
+            st.info("Brak tagów")
 
