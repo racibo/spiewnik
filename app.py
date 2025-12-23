@@ -177,7 +177,7 @@ st.markdown("""
         text-align: center;
         line-height: 1.1;
         font-size: 34px !important;
-        margin-bottom: 10px !important;
+        margin-bottom: 15px !important;
     }
 
     .song-row {
@@ -199,7 +199,10 @@ st.markdown("""
     }
 
     @media (max-width: 800px) {
-        .song-title { font-size: 20px !important; }
+        .song-title { 
+            font-size: 24px !important; 
+            margin-bottom: 12px !important;
+        }
         div[data-testid="stExpander"] button {
             font-size: 11px !important;
             padding: 2px !important;
@@ -212,7 +215,7 @@ ADMIN_PIN = "1234"
 
 RATING_TAGS = {
     1: ["Nie lubię", "Nie graj", "Żenada", "Pomiń", "Trudne", "Słabe", "Nudne"],
-    2: ["Później", "Kiedyś", "Nie teraz", "Ćwiczyć", "Średnie", "Zapomnij"],
+    2: ["Pózniej", "Kiedyś", "Nie teraz", "Ćwiczyć", "Średnie", "Zapomnij"],
     3: ["Zagraj", "OK", "Niezła", "Ognisko", "Spokojna", "Klasyk", "Może być"],
     4: ["Następne", "Ładna", "Polecam", "Częściej", "Wpadająca", "Energia", "Na start"],
     5: ["HIT", "Koniecznie", "Ulubiona", "TOP", "Mistrz", "Hymn", "Wszyscy", "Legenda"]
@@ -369,32 +372,35 @@ if not st.session_state.songs:
 
 song = st.session_state.songs[st.session_state.current_idx]
 
-c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1, 1, 1, 10, 1, 1, 1, 1])
-with c1:
+# NAWIGACJA - POJEDYNCZY ZESTAW PRZYCISKÓW
+st.markdown(f'<div class="song-title">{song["title"]}</div>', unsafe_allow_html=True)
+
+col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([1, 1, 1, 10, 1, 1, 1, 1])
+with col1:
     if st.button("⬅️", key="nav_prev"):
         set_song_by_idx(st.session_state.current_idx - 1)
         st.rerun()
-with c2:
+with col2:
     if st.button("🎲", key="nav_rand"):
         set_song_by_idx(random.randint(0, len(st.session_state.songs)-1))
         st.rerun()
-with c3:
-    if st.button("🆕", key="nav_last"):
+with col3:
+    if st.button("🔝", key="nav_last"):
         set_song_by_idx(len(st.session_state.songs)-1)
         st.rerun()
-with c4:
-    st.markdown(f'<div class="song-title">{song["title"]}</div>', unsafe_allow_html=True)
-with c5:
+with col4:
+    pass  # Puste - zajmowane przez tytuł wyżej
+with col5:
     if st.button("➖", key="nav_t_down"):
         st.session_state.transposition -= 1
         st.rerun()
-with c6:
+with col6:
     st.markdown(f'<div style="text-align:center; color:#ff4b4b; font-weight:bold;">{st.session_state.transposition:+}</div>', unsafe_allow_html=True)
-with c7:
+with col7:
     if st.button("➕", key="nav_t_up"):
         st.session_state.transposition += 1
         st.rerun()
-with c8:
+with col8:
     if st.button("➡️", key="nav_next"):
         set_song_by_idx(st.session_state.current_idx + 1)
         st.rerun()
@@ -518,37 +524,6 @@ if st.button("Dodaj tag", key="add_tag_btn", use_container_width=True):
 
 st.markdown("---")
 
-st.caption("Nawigacja:")
-mb1, mb2, mb3, mb4, mb5, mb6, mb7 = st.columns([1,1,1,1,1,1,1])
-with mb1:
-    if st.button("⬅️", key="m_prev", use_container_width=True):
-        set_song_by_idx(st.session_state.current_idx - 1)
-        st.rerun()
-with mb2:
-    if st.button("🎲", key="m_rand", use_container_width=True):
-        set_song_by_idx(random.randint(0, len(st.session_state.songs)-1))
-        st.rerun()
-with mb3:
-    if st.button("🆕", key="m_last", use_container_width=True):
-        set_song_by_idx(len(st.session_state.songs)-1)
-        st.rerun()
-with mb4:
-    if st.button("➖", key="m_t_down", use_container_width=True):
-        st.session_state.transposition -= 1
-        st.rerun()
-with mb5:
-    st.markdown(f'<div style="color:#ff4b4b; text-align:center; padding-top: 8px;">{st.session_state.transposition:+}</div>', unsafe_allow_html=True)
-with mb6:
-    if st.button("➕", key="m_t_up", use_container_width=True):
-        st.session_state.transposition += 1
-        st.rerun()
-with mb7:
-    if st.button("➡️", key="m_next", use_container_width=True):
-        set_song_by_idx(st.session_state.current_idx + 1)
-        st.rerun()
-
-st.markdown("---")
-
 st.subheader("📚 Polecane utwory")
 c_rec1, c_rec2 = st.columns(2)
 with c_rec1:
@@ -652,7 +627,7 @@ with st.expander("🛠️ Panel Administracyjny"):
         
         with col4:
             avg_rating = sum(s["ratings_sum"] for s in st.session_state.songs) / max(total_ratings, 1) if total_ratings > 0 else 0
-            st.metric("⏱️ Średnia ocena", f"{avg_rating:.2f}")
+            st.metric("⬇️ Średnia ocena", f"{avg_rating:.2f}")
         
         st.markdown("---")
         
