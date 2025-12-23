@@ -180,15 +180,6 @@ st.markdown("""
         margin-bottom: 15px !important;
     }
 
-    .song-title-mobile {
-        display: none;
-        font-weight: bold;
-        color: #ffffff;
-        text-align: center;
-        font-size: 24px;
-        margin-bottom: 12px;
-    }
-
     .song-row {
         display: flex;
         justify-content: flex-start;
@@ -207,59 +198,11 @@ st.markdown("""
         border: 1px solid #4b5563 !important;
     }
 
-    /* PORTRAIT - telefon pionowo (< 600px szerokości) */
-    @media (max-width: 600px) {
-        /* Ukryj wersję na 8 kolumn */
-        button[key="nav_prev"],
-        button[key="nav_rand"],
-        button[key="nav_last"],
-        button[key="nav_next"],
-        button[key="nav_t_down"],
-        button[key="nav_t_up"] {
-            display: none !important;
+    @media (max-width: 768px) {
+        .song-title { 
+            font-size: 22px !important; 
+            margin-bottom: 10px !important;
         }
-        
-        .song-title {
-            display: none;
-        }
-        
-        .song-title-mobile {
-            display: block;
-        }
-    }
-
-    /* LANDSCAPE - telefon poziomo (600px - 900px) */
-    @media (min-width: 601px) and (max-width: 900px) {
-        button[key*="_mb"],
-        button[key*="_mb"] {
-            display: none !important;
-        }
-        
-        .song-title-mobile {
-            display: none;
-        }
-        
-        .song-title {
-            display: block;
-        }
-    }
-
-    /* DESKTOP - komputer (> 900px) */
-    @media (min-width: 901px) {
-        button[key*="_mb"] {
-            display: none !important;
-        }
-        
-        .song-title-mobile {
-            display: none;
-        }
-        
-        .song-title {
-            display: block;
-        }
-    }
-
-    @media (max-width: 800px) {
         div[data-testid="stExpander"] button {
             font-size: 11px !important;
             padding: 2px !important;
@@ -429,78 +372,37 @@ if not st.session_state.songs:
 
 song = st.session_state.songs[st.session_state.current_idx]
 
-# NAWIGACJA - KOMPUTER (8 kolumn)
-st.markdown("""
-<div id="nav-desktop" style="display: none;">
-</div>
-""", unsafe_allow_html=True)
+st.markdown(f'<div class="song-title">{song["title"]}</div>', unsafe_allow_html=True)
 
-col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([1, 1, 1, 10, 1, 1, 1, 1])
-with col1:
-    if st.button("⬅️", key="nav_prev"):
+# Przyciski nawigacyjne - przyciski w 4 kolumnach (zawijają się na telefonie)
+ncol1, ncol2, ncol3, ncol4 = st.columns(4)
+with ncol1:
+    if st.button("⬅️ Wstecz", key="nav_prev", use_container_width=True):
         set_song_by_idx(st.session_state.current_idx - 1)
         st.rerun()
-with col2:
-    if st.button("🎲", key="nav_rand"):
+with ncol2:
+    if st.button("🎲 Losowa", key="nav_rand", use_container_width=True):
         set_song_by_idx(random.randint(0, len(st.session_state.songs)-1))
         st.rerun()
-with col3:
-    if st.button("🔝", key="nav_last"):
+with ncol3:
+    if st.button("🔝 Ostatnia", key="nav_last", use_container_width=True):
         set_song_by_idx(len(st.session_state.songs)-1)
         st.rerun()
-with col4:
-    st.markdown(f'<div class="song-title">{song["title"]}</div>', unsafe_allow_html=True)
-with col5:
-    if st.button("➖", key="nav_t_down"):
-        st.session_state.transposition -= 1
-        st.rerun()
-with col6:
-    st.markdown(f'<div style="text-align:center; color:#ff4b4b; font-weight:bold;">{st.session_state.transposition:+}</div>', unsafe_allow_html=True)
-with col7:
-    if st.button("➕", key="nav_t_up"):
-        st.session_state.transposition += 1
-        st.rerun()
-with col8:
-    if st.button("➡️", key="nav_next"):
+with ncol4:
+    if st.button("➡️ Dalej", key="nav_next", use_container_width=True):
         set_song_by_idx(st.session_state.current_idx + 1)
         st.rerun()
 
-# NAWIGACJA - TELEFON PIONOWO (3 wiersze po 2-3 przyciski)
-st.markdown(f'<div class="song-title-mobile">{song["title"]}</div>', unsafe_allow_html=True)
-
-# Rząd 1: Nawigacja (4 przyciski w 2 kolumnach)
-nm1, nm2 = st.columns(2)
-with nm1:
-    nb1, nb2 = st.columns(2)
-    with nb1:
-        if st.button("⬅️", key="nav_prev_mb"):
-            set_song_by_idx(st.session_state.current_idx - 1)
-            st.rerun()
-    with nb2:
-        if st.button("🎲", key="nav_rand_mb"):
-            set_song_by_idx(random.randint(0, len(st.session_state.songs)-1))
-            st.rerun()
-with nm2:
-    nb3, nb4 = st.columns(2)
-    with nb3:
-        if st.button("🔝", key="nav_last_mb"):
-            set_song_by_idx(len(st.session_state.songs)-1)
-            st.rerun()
-    with nb4:
-        if st.button("➡️", key="nav_next_mb"):
-            set_song_by_idx(st.session_state.current_idx + 1)
-            st.rerun()
-
-# Rząd 2: Transponowanie (3 przyciski)
-nt1, nt2, nt3 = st.columns(3)
-with nt1:
-    if st.button("➖", key="nav_t_down_mb"):
+# Transponowanie w 3 kolumnach
+tcol1, tcol2, tcol3 = st.columns(3)
+with tcol1:
+    if st.button("➖ Niżej", key="nav_t_down", use_container_width=True):
         st.session_state.transposition -= 1
         st.rerun()
-with nt2:
-    st.markdown(f'<div style="text-align:center; color:#ff4b4b; font-weight:bold; padding-top: 8px;">T: {st.session_state.transposition:+}</div>', unsafe_allow_html=True)
-with nt3:
-    if st.button("➕", key="nav_t_up_mb"):
+with tcol2:
+    st.markdown(f'<div style="text-align:center; color:#ff4b4b; font-weight:bold; padding-top: 10px;">Transponuj: {st.session_state.transposition:+}</div>', unsafe_allow_html=True)
+with tcol3:
+    if st.button("➕ Wyżej", key="nav_t_up", use_container_width=True):
         st.session_state.transposition += 1
         st.rerun()
 
