@@ -170,14 +170,14 @@ st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] { background-color: #0e1117; }
     [data-testid="stSidebar"] { background-color: #010409; }
-    
+
     .song-title {
         font-weight: bold;
         color: #ffffff;
         text-align: center;
         line-height: 1.1;
         font-size: 34px !important;
-        margin-bottom: 15px !important;
+        margin-bottom: 8px !important;
     }
 
     .song-row {
@@ -199,10 +199,6 @@ st.markdown("""
     }
 
     @media (max-width: 768px) {
-        .song-title { 
-            font-size: 22px !important; 
-            margin-bottom: 10px !important;
-        }
         div[data-testid="stExpander"] button {
             font-size: 11px !important;
             padding: 2px !important;
@@ -374,37 +370,38 @@ song = st.session_state.songs[st.session_state.current_idx]
 
 st.markdown(f'<div class="song-title">{song["title"]}</div>', unsafe_allow_html=True)
 
-# Przyciski nawigacyjne - przyciski w 4 kolumnach (zawijają się na telefonie)
-ncol1, ncol2, ncol3, ncol4 = st.columns(4)
-with ncol1:
-    if st.button("⬅️ Wstecz", key="nav_prev", use_container_width=True):
+# Kompaktowe przyciski w 2 rzędach po 3-4 przyciski
+row1_c1, row1_c2, row1_c3, row1_c4 = st.columns([0.5, 0.5, 0.5, 4])
+with row1_c1:
+    if st.button("⬅️", key="nav_prev"):
         set_song_by_idx(st.session_state.current_idx - 1)
         st.rerun()
-with ncol2:
-    if st.button("🎲 Losowa", key="nav_rand", use_container_width=True):
+with row1_c2:
+    if st.button("🎲", key="nav_rand"):
         set_song_by_idx(random.randint(0, len(st.session_state.songs)-1))
         st.rerun()
-with ncol3:
-    if st.button("🔝 Ostatnia", key="nav_last", use_container_width=True):
+with row1_c3:
+    if st.button("🔝", key="nav_last"):
         set_song_by_idx(len(st.session_state.songs)-1)
         st.rerun()
-with ncol4:
-    if st.button("➡️ Dalej", key="nav_next", use_container_width=True):
+with row1_c4:
+    if st.button("➡️", key="nav_next"):
         set_song_by_idx(st.session_state.current_idx + 1)
         st.rerun()
 
-# Transponowanie w 3 kolumnach
-tcol1, tcol2, tcol3 = st.columns(3)
-with tcol1:
-    if st.button("➖ Niżej", key="nav_t_down", use_container_width=True):
+row2_c1, row2_c2, row2_c3, row2_c4 = st.columns([0.5, 0.5, 1.5, 3])
+with row2_c1:
+    if st.button("➖", key="nav_t_down"):
         st.session_state.transposition -= 1
         st.rerun()
-with tcol2:
-    st.markdown(f'<div style="text-align:center; color:#ff4b4b; font-weight:bold; padding-top: 10px;">Transponuj: {st.session_state.transposition:+}</div>', unsafe_allow_html=True)
-with tcol3:
-    if st.button("➕ Wyżej", key="nav_t_up", use_container_width=True):
+with row2_c2:
+    st.markdown(f'<div style="text-align:center; color:#ff4b4b; font-weight:bold; padding-top:4px; font-size:14px;">{st.session_state.transposition:+}</div>', unsafe_allow_html=True)
+with row2_c3:
+    if st.button("➕", key="nav_t_up"):
         st.session_state.transposition += 1
         st.rerun()
+with row2_c4:
+    pass
 
 st.markdown('<hr style="margin: 5px 0 15px 0; opacity: 0.2;">', unsafe_allow_html=True)
 
