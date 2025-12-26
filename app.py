@@ -192,6 +192,26 @@ st.markdown("""
         margin-top: -20px !important;
     }
 
+    /* Tagi obok tytułu */
+    .song-tags-header {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+
+    .song-tag-badge {
+        background-color: #21262d;
+        border: 1px solid #30363d;
+        color: #c9d1d9;
+        padding: 4px 10px;
+        border-radius: 16px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
     /* --- PRZYWRÓCONY ORYGINALNY STYL WIERSZY PIOSENKI --- */
     .song-row {
         display: flex;
@@ -263,7 +283,7 @@ ADMIN_PIN = "1234"
 
 RATING_TAGS = {
     1: ["Nie lubię", "Nie graj", "Żenada", "Pomiń", "Trudne", "Słabe", "Nudne"],
-    2: ["Pózniej", "Kiedyś", "Nie teraz", "Ćwiczyć", "Średnie", "Zapomnij"],
+    2: ["Później", "Kiedyś", "Nie teraz", "Ćwiczyć", "Średnie", "Zapomnij"],
     3: ["Zagraj", "OK", "Niezła", "Ognisko", "Spokojna", "Klasyk", "Może być"],
     4: ["Następne", "Ładna", "Polecam", "Częściej", "Wpadająca", "Energia", "Na start"],
     5: ["HIT", "Koniecznie", "Ulubiona", "TOP", "Mistrz", "Hymn", "Wszyscy", "Legenda"]
@@ -446,6 +466,15 @@ if not st.session_state.songs:
 song = st.session_state.songs[st.session_state.current_idx]
 
 st.markdown(f'<div class="song-title">{song["title"]}</div>', unsafe_allow_html=True)
+
+# Wyświetlanie tagów obok tytułu
+if song.get("tags"):
+    tags_html = '<div class="song-tags-header">'
+    for tag in song["tags"]:
+        tags_html += f'<span class="song-tag-badge">{tag}</span>'
+    tags_html += '</div>'
+    st.markdown(tags_html, unsafe_allow_html=True)
+
 st.markdown('<hr style="margin: 5px 0 15px 0; opacity: 0.2;">', unsafe_allow_html=True)
 
 def transpose_chord(chord, steps):
@@ -468,7 +497,6 @@ for l in song["lyrics"]:
     c_str = " ".join(chds)
     
     if clean_text or chds:
-        # Przywrócono kolejność: najpierw lyrics-col, potem chords-col
         html += f'<div class="song-row"><div class="lyrics-col">{clean_text or "&nbsp;"}</div><div class="chords-col">{c_str or "&nbsp;"}</div></div>'
     else:
         html += '<div style="height: 12px;"></div>'
@@ -497,7 +525,7 @@ with col_nav3:
         set_song_by_idx(random.randint(0, len(st.session_state.songs)-1))
         st.rerun()
 with col_nav4:
-    if st.button("⏭️ Ostatnia", key="nav_last", use_container_width=True):
+    if st.button("⭐️ Ostatnia", key="nav_last", use_container_width=True):
         set_song_by_idx(len(st.session_state.songs)-1)
         st.rerun()
 
@@ -564,7 +592,7 @@ if current_tags:
     cols = st.columns(4)
     for i, tag in enumerate(current_tags):
         with cols[i % 4]:
-            if st.button(f"✖ {tag}", key=f"del_{i}", use_container_width=True):
+            if st.button(f"✕ {tag}", key=f"del_{i}", use_container_width=True):
                 song["tags"].remove(tag)
                 update_song_tags(song["row"], song["tags"])
                 reload_songs()
