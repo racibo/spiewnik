@@ -19,6 +19,7 @@ def init_gsheet():
                 scopes=['https://www.googleapis.com/auth/spreadsheets']
             )
             client = gspread.authorize(creds)
+            # ID arkusza z oryginalnego kodu
             spreadsheet = client.open_by_key("1RG82ZtUZfNsOjXI7xHKDnwbnDUl2SwE5oDLMNJNYdkw")
             worksheet = spreadsheet.worksheet("Songs")
             return worksheet
@@ -298,15 +299,6 @@ def get_keywords(songs_list, source="lyrics", limit=40):
     most_common = Counter(all_words).most_common(limit)
     return most_common if most_common else []
 
-def get_best_songs_all_time(songs):
-    if not songs:
-        return None
-    best = max(
-        songs,
-        key=lambda x: x["ratings_sum"] / x["ratings_count"] if x["ratings_count"] > 0 else 0
-    )
-    return best["title"] if best["ratings_count"] > 0 else None
-
 def get_most_common_tags(songs, limit=10):
     all_tags = []
     for song in songs:
@@ -322,41 +314,63 @@ def get_most_visited_songs(songs, limit=10):
 def reload_songs():
     st.session_state.songs = load_songs_from_sheets()
 
-# --- FUNKCJE REKOMENDACJI ---
+# --- NOWE FUNKCJE REKOMENDACJI ---
 
-def calculate_song_score(song):
-    """Oblicza score piosenki na podstawie ocen i tagów"""
-    avg_rating = song["ratings_sum"] / song["ratings_count"] if song["ratings_count"] > 0 else 2.5
-    confidence = min(song["ratings_count"] / 5, 1.0)
-    
-    positive_tags_set = set()
-    for rating in [4, 5]:
-        positive_tags_set.update(RATING_TAGS.get(rating, []))
-    
-    positive_tags_count = sum(1 for tag in song.get("tags", []) if tag in positive_tags_set)
-    tag_bonus = positive_tags_count * 0.5
-    
-    score = (avg_rating * 2) + (confidence * 1.5) + tag_bonus
-    return score
+def get_recommended_songs_rotational(songs, limit=5):
+    """
+    Nowa logika losowania:
+    - 2 piosenki oceniane (bez negatywnych tagów)
+    - 2 piosenki 'dziewicze' (bez ocen i bez tagów)
+    - 1 piosenka całkowicie losowa
+    """
+    if not songs:
+        return []
 
-def get_recommended_songs_simple(songs, limit=5):
-    """Zwraca listę polecanych piosenek z inteligentnym algorytmem"""
+    # 1. Piosenki oceniane i "bezpieczne"
     negative_tags_set = set(RATING_TAGS.get(1, []))
-    
-    filtered_songs = [
-        song for song in songs
-        if not any(tag in negative_tags_set for tag in song.get("tags", []))
+    rated_safe_songs = [
+        s for s in songs 
+        if s["ratings_count"] > 0 
+        and not any(tag in negative_tags_set for tag in s.get("tags", []))
     ]
+
+    # 2. Piosenki niezbadane (brak ocen i brak tagów)
+    unexplored_songs = [
+        s for s in songs 
+        if s["ratings_count"] == 0 and not s.get("tags")
+    ]
+
+    selection = []
+
+    # Losujemy 2 z ocenianych (jeśli są)
+    if len(rated_safe_songs) >= 2:
+        selection.extend(random.sample(rated_safe_songs, 2))
+    else:
+        selection.extend(rated_safe_songs)
     
-    if not filtered_songs:
-        filtered_songs = songs
+    # Losujemy 2 z niezbadanych (jeśli są)
+    if len(unexplored_songs) >= 2:
+        selection.extend(random.sample(unexplored_songs, 2))
+    else:
+        selection.extend(unexplored_songs)
     
-    scored = [(song, calculate_song_score(song)) for song in filtered_songs]
-    scored.sort(key=lambda x: x[1], reverse=True)
-    top_candidates = scored[:min(15, len(scored))]
-    
-    selected = random.sample(top_candidates, min(limit, len(top_candidates)))
-    return [song for song, score in selected]
+    # Uzupełniamy do limit-1 z puli ogólnej (wykluczając już wybrane), by zostawić miejsce na Jokera
+    # Jeśli mamy mniej piosenek niż limit-1, dobieramy ile się da
+    needed = max(0, (limit - 1) - len(selection))
+    if needed > 0:
+        remaining_pool = [s for s in songs if s not in selection]
+        if len(remaining_pool) >= needed:
+            selection.extend(random.sample(remaining_pool, needed))
+        else:
+            selection.extend(remaining_pool)
+
+    # 3. Piąta piosenka - Joker (zupełnie losowa z CAŁEJ puli)
+    if songs:
+        selection.append(random.choice(songs))
+
+    # Ostateczne przycięcie do limitu (na wypadek duplikatów przy małej bazie) i przemieszanie
+    random.shuffle(selection)
+    return selection[:limit]
 
 # --- FUNKCJE RENDEROWANIA ---
 
@@ -425,7 +439,8 @@ if "kw_titles" not in st.session_state:
     st.session_state.kw_titles = get_keywords(st.session_state.songs, "title")
 
 if "random_sample" not in st.session_state:
-    st.session_state.random_sample = get_recommended_songs_simple(st.session_state.songs, limit=5)
+    # Użycie nowej logiki rotacyjnej przy starcie
+    st.session_state.random_sample = get_recommended_songs_rotational(st.session_state.songs, limit=5)
 
 def set_song_by_idx(idx):
     if st.session_state.songs:
@@ -552,16 +567,16 @@ with col_nav4:
         st.rerun()
 st.markdown('</div>', unsafe_allow_html=True)
 
-st.caption("Transpozycja")
+st.caption("Zmień tonację")
 ct1, ct2, ct3 = st.columns([1, 1, 1])
 with ct1:
-    if st.button("➖ Ton", key="t_down", use_container_width=True):
+    if st.button("➖ pół tonu", key="t_down", use_container_width=True):
         st.session_state.transposition -= 1
         st.rerun()
 with ct2:
     st.markdown(f'<div style="text-align:center; padding-top:5px; font-weight:bold; color:#aaa;">{st.session_state.transposition:+}</div>', unsafe_allow_html=True)
 with ct3:
-    if st.button("➕ Ton", key="t_up", use_container_width=True):
+    if st.button("➕ pół tonu", key="t_up", use_container_width=True):
         st.session_state.transposition += 1
         st.rerun()
 
@@ -601,9 +616,8 @@ if score_for_tags in RATING_TAGS:
         lambda t: (song["tags"].append(t) or update_song_tags(song["row"], song["tags"]) or reload_songs() or st.rerun()) 
         if t not in song.get("tags", []) else None)
 
-st.caption("Twoje tagi i popularne:")
+st.caption("Tagi tej piosenki. X usuwa tę etykietę")
 current_tags = song.get("tags", [])
-popular_tags = [t for t in get_most_common_tags(st.session_state.songs, limit=15) if t not in current_tags]
 
 if current_tags:
     st.markdown('<div class="tag-btn">', unsafe_allow_html=True)
@@ -617,18 +631,7 @@ if current_tags:
                 st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-if "show_more_tags" not in st.session_state: st.session_state.show_more_tags = False
-
-if popular_tags:
-    limit_pop = 50 if st.session_state.show_more_tags else 8
-    render_compact_tags(popular_tags, "pop_tags", 
-        lambda t: (song["tags"].append(t) or update_song_tags(song["row"], song["tags"]) or reload_songs() or st.rerun()),
-        limit=limit_pop)
-    
-    if len(popular_tags) > 8:
-        if st.button("Więcej tagów ▼" if not st.session_state.show_more_tags else "Mniej ▲", key="toggle_tags", use_container_width=True):
-            st.session_state.show_more_tags = not st.session_state.show_more_tags
-            st.rerun()
+# USUNIĘTO SEKCJĘ "POPULARNE TAGI" Z TEGO MIEJSCA
 
 c_add_t1, c_add_t2 = st.columns([3, 1])
 with c_add_t1:
@@ -644,18 +647,46 @@ with c_add_t2:
 st.markdown('<hr style="opacity: 0.1;">', unsafe_allow_html=True)
 
 st.subheader("📚 Polecane")
-tab_rand, tab_top = st.tabs(["🎲 Losowe", "🏆 Top Oceniane"])
+# Zaktualizowane taby - dodano "Wg Tagów"
+tab_tags, tab_rand, tab_top = st.tabs(["🏷️ Wg Tagów", "🎲 Losowe", "🏆 Top Oceniane"])
+
+with tab_tags:
+    st.caption("Wybierz tag, aby zobaczyć listę piosenek:")
+    # Pobieranie wszystkich unikalnych tagów z bazy
+    all_unique_tags = sorted(list(set(t for s in st.session_state.songs for t in s.get("tags", []))))
+    
+    selected_tag_search = st.selectbox("Wybierz tag:", [""] + all_unique_tags, key="tag_search_box")
+    
+    if selected_tag_search:
+        tagged_songs = [s for s in st.session_state.songs if selected_tag_search in s.get("tags", [])]
+        st.write(f"Znaleziono {len(tagged_songs)} piosenek:")
+        
+        st.markdown('<div class="list-btn">', unsafe_allow_html=True)
+        # Wyświetlamy wszystkie (można by stronicować, ale prośba była o "dość liczną" listę)
+        for i, ts in enumerate(tagged_songs):
+            # Używamy unikalnego klucza dla przycisku
+            if st.button(f"{ts['title']}", key=f"tag_search_res_{i}", use_container_width=True):
+                # Znajdź indeks w głównej tablicy i przełącz
+                real_idx = next((j for j, s in enumerate(st.session_state.songs) if s["title"] == ts["title"]), 0)
+                set_song_by_idx(real_idx)
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 with tab_rand:
     if st.button("🔄 Losuj inne", key="reroll_recs", use_container_width=True):
-        st.session_state.random_sample = get_recommended_songs_simple(st.session_state.songs, limit=5)
+        # Użycie nowej funkcji rotacyjnej
+        st.session_state.random_sample = get_recommended_songs_rotational(st.session_state.songs, limit=5)
         st.rerun()
+        
     st.markdown('<div class="list-btn">', unsafe_allow_html=True)
     for i, rs in enumerate(st.session_state.random_sample):
-        if st.button(f"{rs['title']}", key=f"rec_r_{i}", use_container_width=True):
+        # Oznaczenie wizualne dla piosenek z ocenami vs bez (opcjonalne, ale pomocne)
+        prefix = "⭐" if rs["ratings_count"] > 0 else "🆕"
+        if st.button(f"{prefix} {rs['title']}", key=f"rec_r_{i}", use_container_width=True):
             set_song_by_idx(next((j for j, s in enumerate(st.session_state.songs) if s["title"] == rs["title"]), 0))
             st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
+    st.caption("Legenda: ⭐ Oceniana, 🆕 Nowa/Niezbadana")
 
 with tab_top:
     top_visited = get_most_visited_songs(st.session_state.songs, limit=5)
