@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import gspread
 from google.oauth2.service_account import Credentials
 import json
@@ -19,7 +20,7 @@ def init_gsheet():
                 scopes=['https://www.googleapis.com/auth/spreadsheets']
             )
             client = gspread.authorize(creds)
-            # ID arkusza z oryginalnego kodu
+            # ID arkusza
             spreadsheet = client.open_by_key("1RG82ZtUZfNsOjXI7xHKDnwbnDUl2SwE5oDLMNJNYdkw")
             worksheet = spreadsheet.worksheet("Songs")
             return worksheet
@@ -177,19 +178,18 @@ st.set_page_config(
     initial_sidebar_state="expanded" 
 )
 
+# --- CSS FIX: ABSOLUTE POSITIONING FOR PRINT ---
 st.markdown("""
 <style>
-    [data-testid="stAppViewContainer"] { background-color: #0e1117; }
-    [data-testid="stSidebar"] { background-color: #010409; }
-
+    /* --- OGÓLNE STYLE --- */
     .song-title {
         font-weight: bold;
-        color: #ffffff;
+        color: var(--text-color);
         text-align: center;
         line-height: 1.1;
         font-size: 28px !important;
-        margin-bottom: 12px !important;
-        margin-top: -20px !important;
+        margin-bottom: 10px !important;
+        margin-top: 10px;
     }
 
     .song-tags-header {
@@ -197,18 +197,19 @@ st.markdown("""
         justify-content: center;
         align-items: center;
         gap: 8px;
-        margin-bottom: 12px;
+        margin-bottom: 15px;
         flex-wrap: wrap;
     }
 
     .song-tag-badge {
-        background-color: #21262d;
-        border: 1px solid #30363d;
-        color: #c9d1d9;
+        background-color: var(--secondary-background-color);
+        border: 1px solid var(--secondary-background-color);
+        color: var(--text-color);
         padding: 4px 10px;
         border-radius: 16px;
         font-size: 12px;
         font-weight: 500;
+        opacity: 0.8;
     }
 
     .song-row {
@@ -217,19 +218,21 @@ st.markdown("""
         align-items: baseline;
         gap: 20px;
         margin-bottom: 0px !important;
+        page-break-inside: avoid;
     }
     .lyrics-col { 
         flex: 0 0 auto; 
         min-width: 150px; 
         font-size: 16px; 
-        color: #eee; 
+        color: var(--text-color);
     }
     .chords-col { 
-        color: #ff4b4b !important; 
+        color: #ff4b4b !important;
         font-weight: bold; 
         font-size: 16px; 
     }
 
+    /* Przyciski */
     div.stButton > button {
         border-radius: 8px;
         transition: all 0.2s;
@@ -244,8 +247,7 @@ st.markdown("""
     .list-btn div.stButton > button {
         text-align: left !important;
         justify-content: flex-start !important;
-        border: 1px solid #30363d !important;
-        background-color: #161b22 !important;
+        border: 1px solid var(--secondary-background-color) !important;
     }
 
     .tag-btn div.stButton > button {
@@ -253,13 +255,9 @@ st.markdown("""
         font-size: 12px !important;
         min-height: 0px !important;
         height: 28px !important;
-        background-color: #21262d;
-        border: 1px solid #30363d;
-        color: #c9d1d9;
-    }
-    .tag-btn div.stButton > button:hover {
-        border-color: #8b949e;
-        color: #fff;
+        background-color: var(--secondary-background-color);
+        border: 1px solid var(--secondary-background-color);
+        color: var(--text-color);
     }
     
     [data-testid="stSidebar"] div.stButton > button {
@@ -268,6 +266,7 @@ st.markdown("""
     }
 
     hr { margin: 10px 0 !important; }
+    
 </style>
 """, unsafe_allow_html=True)
 
@@ -314,19 +313,12 @@ def get_most_visited_songs(songs, limit=10):
 def reload_songs():
     st.session_state.songs = load_songs_from_sheets()
 
-# --- NOWE FUNKCJE REKOMENDACJI ---
+# --- REKOMENDACJE ---
 
 def get_recommended_songs_rotational(songs, limit=5):
-    """
-    Nowa logika losowania:
-    - 2 piosenki oceniane (bez negatywnych tagów)
-    - 2 piosenki 'dziewicze' (bez ocen i bez tagów)
-    - 1 piosenka całkowicie losowa
-    """
     if not songs:
         return []
 
-    # 1. Piosenki oceniane i "bezpieczne"
     negative_tags_set = set(RATING_TAGS.get(1, []))
     rated_safe_songs = [
         s for s in songs 
@@ -334,7 +326,6 @@ def get_recommended_songs_rotational(songs, limit=5):
         and not any(tag in negative_tags_set for tag in s.get("tags", []))
     ]
 
-    # 2. Piosenki niezbadane (brak ocen i brak tagów)
     unexplored_songs = [
         s for s in songs 
         if s["ratings_count"] == 0 and not s.get("tags")
@@ -342,20 +333,16 @@ def get_recommended_songs_rotational(songs, limit=5):
 
     selection = []
 
-    # Losujemy 2 z ocenianych (jeśli są)
     if len(rated_safe_songs) >= 2:
         selection.extend(random.sample(rated_safe_songs, 2))
     else:
         selection.extend(rated_safe_songs)
     
-    # Losujemy 2 z niezbadanych (jeśli są)
     if len(unexplored_songs) >= 2:
         selection.extend(random.sample(unexplored_songs, 2))
     else:
         selection.extend(unexplored_songs)
     
-    # Uzupełniamy do limit-1 z puli ogólnej (wykluczając już wybrane), by zostawić miejsce na Jokera
-    # Jeśli mamy mniej piosenek niż limit-1, dobieramy ile się da
     needed = max(0, (limit - 1) - len(selection))
     if needed > 0:
         remaining_pool = [s for s in songs if s not in selection]
@@ -364,15 +351,13 @@ def get_recommended_songs_rotational(songs, limit=5):
         else:
             selection.extend(remaining_pool)
 
-    # 3. Piąta piosenka - Joker (zupełnie losowa z CAŁEJ puli)
     if songs:
         selection.append(random.choice(songs))
 
-    # Ostateczne przycięcie do limitu (na wypadek duplikatów przy małej bazie) i przemieszanie
     random.shuffle(selection)
     return selection[:limit]
 
-# --- FUNKCJE RENDEROWANIA ---
+# --- RENDEROWANIE ---
 
 def render_expandable_cloud(items, key_prefix, on_click_action, initial_count=8):
     state_key = f"expanded_{key_prefix}"
@@ -439,7 +424,6 @@ if "kw_titles" not in st.session_state:
     st.session_state.kw_titles = get_keywords(st.session_state.songs, "title")
 
 if "random_sample" not in st.session_state:
-    # Użycie nowej logiki rotacyjnej przy starcie
     st.session_state.random_sample = get_recommended_songs_rotational(st.session_state.songs, limit=5)
 
 def set_song_by_idx(idx):
@@ -506,17 +490,22 @@ if not st.session_state.songs:
 
 song = st.session_state.songs[st.session_state.current_idx]
 
-st.markdown(f'<div class="song-title">{song["title"]}</div>', unsafe_allow_html=True)
+# --- BUDOWANIE HTML DO DRUKU (Całość w jednym bloku) ---
 
+# 1. Tytuł
+full_html = f'<div class="song-title">{song["title"]}</div>'
+
+# 2. Tagi
 if song.get("tags"):
     tags_html = '<div class="song-tags-header">'
     for tag in song["tags"]:
         tags_html += f'<span class="song-tag-badge">{tag}</span>'
     tags_html += '</div>'
-    st.markdown(tags_html, unsafe_allow_html=True)
+    full_html += tags_html
 
-st.markdown('<hr style="margin: 5px 0 15px 0; opacity: 0.2;">', unsafe_allow_html=True)
+full_html += '<hr style="margin: 5px 0 15px 0; opacity: 0.2;">'
 
+# 3. Tekst i Akordy (Generowanie)
 def transpose_chord(chord, steps):
     D = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"]
     m = ["c","cis","d","dis","e","f","fis","g","gis","a","b","h"]
@@ -529,18 +518,22 @@ def transpose_chord(chord, steps):
             return m[(m.index(base) + steps) % 12] + suffix
     return chord
 
-html = '<div class="song-container">'
+full_html += '<div class="song-container">'
 for l in song["lyrics"]:
     clean_text = l["text"].strip()
     chds = [transpose_chord(c, st.session_state.transposition) for c in l.get("chords", [])]
     c_str = " ".join(chds)
     
     if clean_text or chds:
-        html += f'<div class="song-row"><div class="lyrics-col">{clean_text or "&nbsp;"}</div><div class="chords-col">{c_str or "&nbsp;"}</div></div>'
+        full_html += f'<div class="song-row"><div class="lyrics-col">{clean_text or "&nbsp;"}</div><div class="chords-col">{c_str or "&nbsp;"}</div></div>'
     else:
-        html += '<div style="height: 12px;"></div>'
+        full_html += '<div style="height: 12px;"></div>'
+full_html += '</div>'
 
-st.markdown(html + '</div>', unsafe_allow_html=True)
+# --- RENDERING (Najważniejsza zmiana: ID "printable-area") ---
+# Cała piosenka jest w jednym kontenerze, który CSS pokaże podczas druku.
+st.markdown(f'<div>{full_html}</div>', unsafe_allow_html=True)
+
 st.markdown('<hr style="margin: 15px 0 10px 0; opacity: 0.2;">', unsafe_allow_html=True)
 
 # --- PANEL STEROWANIA ---
@@ -574,7 +567,7 @@ with ct1:
         st.session_state.transposition -= 1
         st.rerun()
 with ct2:
-    st.markdown(f'<div style="text-align:center; padding-top:5px; font-weight:bold; color:#aaa;">{st.session_state.transposition:+}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="text-align:center; padding-top:5px; font-weight:bold; color:var(--text-color);">{st.session_state.transposition:+}</div>', unsafe_allow_html=True)
 with ct3:
     if st.button("➕ pół tonu", key="t_up", use_container_width=True):
         st.session_state.transposition += 1
@@ -585,7 +578,7 @@ st.markdown('<hr style="opacity: 0.1;">', unsafe_allow_html=True)
 col_rate_info, col_rate_act = st.columns([1, 2])
 with col_rate_info:
     avg = song["ratings_sum"] / song["ratings_count"] if song["ratings_count"] > 0 else 0
-    st.markdown(f"<div style='font-size:12px; color:#888;'>Średnia: <b>{avg:.1f}</b><br>Głosów: {song['ratings_count']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='font-size:12px; opacity:0.7;'>Średnia: <b>{avg:.1f}</b><br>Głosów: {song['ratings_count']}</div>", unsafe_allow_html=True)
 with col_rate_act:
     score = st.feedback("stars", key="rating_feedback") 
     if score is None: 
@@ -631,8 +624,6 @@ if current_tags:
                 st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# USUNIĘTO SEKCJĘ "POPULARNE TAGI" Z TEGO MIEJSCA
-
 c_add_t1, c_add_t2 = st.columns([3, 1])
 with c_add_t1:
     new_tag_txt = st.text_input("Nowy tag", placeholder="Wpisz...", label_visibility="collapsed", key="new_tag_input")
@@ -647,12 +638,10 @@ with c_add_t2:
 st.markdown('<hr style="opacity: 0.1;">', unsafe_allow_html=True)
 
 st.subheader("📚 Polecane")
-# Zaktualizowane taby - dodano "Wg Tagów"
 tab_tags, tab_rand, tab_top = st.tabs(["🏷️ Wg Tagów", "🎲 Losowe", "🏆 Top Oceniane"])
 
 with tab_tags:
     st.caption("Wybierz tag, aby zobaczyć listę piosenek:")
-    # Pobieranie wszystkich unikalnych tagów z bazy
     all_unique_tags = sorted(list(set(t for s in st.session_state.songs for t in s.get("tags", []))))
     
     selected_tag_search = st.selectbox("Wybierz tag:", [""] + all_unique_tags, key="tag_search_box")
@@ -662,11 +651,8 @@ with tab_tags:
         st.write(f"Znaleziono {len(tagged_songs)} piosenek:")
         
         st.markdown('<div class="list-btn">', unsafe_allow_html=True)
-        # Wyświetlamy wszystkie (można by stronicować, ale prośba była o "dość liczną" listę)
         for i, ts in enumerate(tagged_songs):
-            # Używamy unikalnego klucza dla przycisku
             if st.button(f"{ts['title']}", key=f"tag_search_res_{i}", use_container_width=True):
-                # Znajdź indeks w głównej tablicy i przełącz
                 real_idx = next((j for j, s in enumerate(st.session_state.songs) if s["title"] == ts["title"]), 0)
                 set_song_by_idx(real_idx)
                 st.rerun()
@@ -674,13 +660,11 @@ with tab_tags:
 
 with tab_rand:
     if st.button("🔄 Losuj inne", key="reroll_recs", use_container_width=True):
-        # Użycie nowej funkcji rotacyjnej
         st.session_state.random_sample = get_recommended_songs_rotational(st.session_state.songs, limit=5)
         st.rerun()
         
     st.markdown('<div class="list-btn">', unsafe_allow_html=True)
     for i, rs in enumerate(st.session_state.random_sample):
-        # Oznaczenie wizualne dla piosenek z ocenami vs bez (opcjonalne, ale pomocne)
         prefix = "⭐" if rs["ratings_count"] > 0 else "🆕"
         if st.button(f"{prefix} {rs['title']}", key=f"rec_r_{i}", use_container_width=True):
             set_song_by_idx(next((j for j, s in enumerate(st.session_state.songs) if s["title"] == rs["title"]), 0))
