@@ -5,6 +5,7 @@ import json
 import random
 import re
 from collections import Counter
+import urllib.parse
 
 # ─────────────────────────────────────────────
 #  POŁĄCZENIE Z GOOGLE SHEETS
@@ -84,6 +85,8 @@ def reload_songs():
     """Czyści cache i przeładowuje do session_state."""
     load_songs_cached.clear()
     st.session_state.songs = load_songs_cached()
+    st.session_state.playlist = list(range(len(st.session_state.songs)))
+    st.session_state.playlist_name = "Wszystkie"
 
 def save_song_to_sheets(row_idx, title, lyrics, ratings_sum, ratings_count, tags):
     if not ws:
@@ -173,7 +176,7 @@ st.markdown("""
         margin-top: 6px;
     }
 
-    /* Klikalne tagi nad piosenką */
+    /* Klikalne tagi nad piosenką - jako hiperłącza */
     .song-tags-header {
         display: flex;
         justify-content: center;
@@ -182,7 +185,7 @@ st.markdown("""
         margin-bottom: 10px;
         flex-wrap: wrap;
     }
-    .song-tag-badge {
+    a.song-tag-badge {
         background-color: var(--secondary-background-color);
         border: 1px solid rgba(255,75,75,0.4);
         color: #ff4b4b;
@@ -191,9 +194,14 @@ st.markdown("""
         font-size: 12px;
         font-weight: 600;
         cursor: pointer;
+        text-decoration: none;
         transition: background 0.15s;
     }
-    .song-tag-badge:hover { background-color: rgba(255,75,75,0.15); }
+    a.song-tag-badge:hover { 
+        background-color: rgba(255,75,75,0.15); 
+        color: #ff4b4b;
+        text-decoration: none;
+    }
 
     /* Wiersz tekstu + chwytów */
     .song-row {
@@ -245,25 +253,22 @@ st.markdown("""
 
     hr { margin: 8px 0 !important; }
 
-    /* Tryb pełnoekranowy */
-    body.fullscreen-mode [data-testid="stSidebar"],
-    body.fullscreen-mode [data-testid="stHeader"],
-    body.fullscreen-mode [data-testid="stToolbar"],
-    body.fullscreen-mode .controls-section,
-    body.fullscreen-mode .stExpander {
+    /* Tryb pełnoekranowy (obsługa z sesji) */
+    .fullscreen-active [data-testid="stSidebar"],
+    .fullscreen-active [data-testid="stHeader"],
+    .fullscreen-active .controls-section {
         display: none !important;
     }
-    body.fullscreen-mode [data-testid="stAppViewContainer"] > section:last-child {
-        padding: 1rem 2rem !important;
+    .fullscreen-active .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
     }
 
-    /* Transpozycja — ukryty span z danymi per-wiersz */
-    .chord-token { display: inline; }
 </style>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-#  HELPERS
+#  HELPERS & NAWIGACJA Z PLAYLISTĄ
 # ─────────────────────────────────────────────
 
 def get_keywords(songs_list, source="lyrics", limit=40):
@@ -297,10 +302,38 @@ def get_recommended_songs_rotational(songs, limit=5):
     random.shuffle(selection)
     return selection[:limit]
 
-def set_song_by_idx(idx):
+def set_song_by_idx(idx, keep_playlist=False):
     if st.session_state.songs:
         st.session_state.current_idx = idx % len(st.session_state.songs)
         st.session_state.transposition = 0
+        if not keep_playlist:
+            st.session_state.playlist = list(range(len(st.session_state.songs)))
+            st.session_state.playlist_name = "Wszystkie"
+
+def go_next_song():
+    pl = st.session_state.playlist
+    curr = st.session_state.current_idx
+    try:
+        pl_idx = pl.index(curr)
+        next_idx = pl[(pl_idx + 1) % len(pl)]
+    except ValueError:
+        next_idx = pl[0] if pl else 0
+    set_song_by_idx(next_idx, keep_playlist=True)
+
+def go_prev_song():
+    pl = st.session_state.playlist
+    curr = st.session_state.current_idx
+    try:
+        pl_idx = pl.index(curr)
+        prev_idx = pl[(pl_idx - 1) % len(pl)]
+    except ValueError:
+        prev_idx = pl[-1] if pl else 0
+    set_song_by_idx(prev_idx, keep_playlist=True)
+
+def go_rand_song():
+    pl = st.session_state.playlist
+    if pl:
+        set_song_by_idx(random.choice(pl), keep_playlist=True)
 
 # ─────────────────────────────────────────────
 #  RENDEROWANIE TAGÓW / CHMURY
@@ -344,7 +377,7 @@ def render_compact_tags(items, key_prefix, on_click_action, limit=None):
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-#  TRANSPOZYCJA (czysta funkcja)
+#  TRANSPOZYCJA
 # ─────────────────────────────────────────────
 
 _NOTES_MAJ = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"]
@@ -363,40 +396,31 @@ def transpose_chord(chord, steps):
     return chord
 
 def build_song_html(song, transposition):
-    """
-    Generuje HTML piosenki z data-* na akordach — JS może zmieniać
-    transpozycję bez rerenderu Streamlit.
-    """
     lines = []
-    # Tytuł
     lines.append(f'<div class="song-title">{song["title"]}</div>')
 
-    # Tagi — klikalne (uruchamiają sendPrompt przez JS)
+    # Tagi jako linki URL (np. ?tag=Ognisko), które Streamlit natywnie wykrywa
     if song.get("tags"):
         tags_html = '<div class="song-tags-header">'
         for tag in song["tags"]:
-            # onclick wysyła komendę przez postMessage (obsługiwana przez fragment JS poniżej)
-            safe = tag.replace("'", "\\'")
-            tags_html += f'<span class="song-tag-badge" onclick="filterByTag(\'{safe}\')">{tag}</span>'
+            safe_tag = urllib.parse.quote(tag)
+            tags_html += f'<a href="?tag={safe_tag}" target="_self" class="song-tag-badge">{tag}</a>'
         tags_html += '</div>'
         lines.append(tags_html)
 
     lines.append('<hr style="margin: 5px 0 12px 0; opacity: 0.2;">')
 
-    # Tekst + akordy z data-atrybutami (oryginalne akordy bez transpozycji)
     lines.append('<div class="song-container" id="song-container">')
     for l in song["lyrics"]:
         text = l["text"].strip()
         orig_chords = l.get("chords", [])
         transposed = [transpose_chord(c, transposition) for c in orig_chords]
         c_str = " ".join(transposed)
-        # data-chords przechowuje oryginalne akordy (do JS transpozycji)
-        data_attr = " ".join(orig_chords)
         if text or orig_chords:
             lines.append(
                 f'<div class="song-row">'
                 f'<div class="lyrics-col">{text or "&nbsp;"}</div>'
-                f'<div class="chords-col" data-chords="{data_attr}">{c_str or "&nbsp;"}</div>'
+                f'<div class="chords-col">{c_str or "&nbsp;"}</div>'
                 f'</div>'
             )
         else:
@@ -411,11 +435,21 @@ def build_song_html(song, transposition):
 if "songs" not in st.session_state:
     st.session_state.songs = load_songs_cached()
 
+if "playlist" not in st.session_state:
+    if st.session_state.songs:
+        st.session_state.playlist = list(range(len(st.session_state.songs)))
+    else:
+        st.session_state.playlist = []
+    st.session_state.playlist_name = "Wszystkie"
+
 if "current_idx" not in st.session_state:
-    st.session_state.current_idx = random.randint(0, max(0, len(st.session_state.songs) - 1))
+    st.session_state.current_idx = random.randint(0, max(0, len(st.session_state.songs) - 1)) if st.session_state.songs else 0
 
 if "transposition" not in st.session_state:
     st.session_state.transposition = 0
+
+if "fullscreen" not in st.session_state:
+    st.session_state.fullscreen = False
 
 if "kw_lyrics" not in st.session_state:
     st.session_state.kw_lyrics = get_keywords(st.session_state.songs, "lyrics")
@@ -426,18 +460,14 @@ if "kw_titles" not in st.session_state:
 if "random_sample" not in st.session_state:
     st.session_state.random_sample = get_recommended_songs_rotational(st.session_state.songs, limit=5)
 
-if "tag_filter" not in st.session_state:
-    st.session_state.tag_filter = None
-
-# Obsługa kliknięcia tagu z HTML (przez query param / JS bridge)
-# Streamlit nie ma natywnego JS→Python bridge, więc używamy st.query_params
-qp = st.query_params
-if "tag" in qp:
-    st.session_state.tag_filter = qp["tag"]
-    # skocz do losowej piosenki z tym tagiem
-    matches = [j for j, s in enumerate(st.session_state.songs) if st.session_state.tag_filter in s.get("tags", [])]
+# Obsługa kliknięcia tagu (Streamlit wychwytuje parametry URL)
+if "tag" in st.query_params:
+    tag = st.query_params.get("tag")
+    matches = [j for j, s in enumerate(st.session_state.songs) if tag in s.get("tags", [])]
     if matches:
-        set_song_by_idx(random.choice(matches))
+        st.session_state.playlist = matches
+        st.session_state.playlist_name = f"Tag: {tag}"
+        set_song_by_idx(matches[0], keep_playlist=True)
     st.query_params.clear()
     st.rerun()
 
@@ -461,16 +491,18 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # ── TAGI — na samej górze sidebara (przed słowami kluczowymi) ──
+    # ── TAGI ──
     st.caption("🏷️ TAGI")
     all_tags_flat = [t for s in st.session_state.songs for t in s.get("tags", [])]
     if all_tags_flat:
         common_tags = [t for t, _ in Counter(all_tags_flat).most_common(50)]
 
-        def _jump_to_tag(tag):
-            matches = [j for j, s in enumerate(st.session_state.songs) if tag in s.get("tags", [])]
-            if matches:
-                set_song_by_idx(random.choice(matches))
+        def _jump_to_tag(t):
+            m = [j for j, s in enumerate(st.session_state.songs) if t in s.get("tags", [])]
+            if m:
+                st.session_state.playlist = m
+                st.session_state.playlist_name = f"Tag: {t}"
+                set_song_by_idx(m[0], keep_playlist=True)
             st.rerun()
 
         render_expandable_cloud(common_tags, "side_tags", _jump_to_tag, initial_count=9)
@@ -481,9 +513,8 @@ with st.sidebar:
     st.caption("Z TEKSTU")
     if st.session_state.kw_lyrics:
         def _jump_to_lyrics_kw(w):
-            matches = [j for j, s in enumerate(st.session_state.songs) if w in " ".join(l["text"] for l in s["lyrics"]).lower()]
-            if matches:
-                set_song_by_idx(random.choice(matches))
+            m = [j for j, s in enumerate(st.session_state.songs) if w in " ".join(l["text"] for l in s["lyrics"]).lower()]
+            if m: set_song_by_idx(random.choice(m))
             st.rerun()
         render_expandable_cloud([w for w, _ in st.session_state.kw_lyrics], "side_l", _jump_to_lyrics_kw, initial_count=9)
 
@@ -491,9 +522,8 @@ with st.sidebar:
     st.caption("Z TYTUŁÓW")
     if st.session_state.kw_titles:
         def _jump_to_title_kw(w):
-            matches = [j for j, s in enumerate(st.session_state.songs) if w in s["title"].lower()]
-            if matches:
-                set_song_by_idx(random.choice(matches))
+            m = [j for j, s in enumerate(st.session_state.songs) if w in s["title"].lower()]
+            if m: set_song_by_idx(random.choice(m))
             st.rerun()
         render_expandable_cloud([w for w, _ in st.session_state.kw_titles], "side_t", _jump_to_title_kw, initial_count=6)
 
@@ -515,96 +545,85 @@ if not st.session_state.songs:
 song = st.session_state.songs[st.session_state.current_idx]
 
 # ─────────────────────────────────────────────
+#  TRYB PEŁNOEKRANOWY - ZAMKNIĘCIE (GÓRA)
+# ─────────────────────────────────────────────
+if st.session_state.fullscreen:
+    st.markdown('<div class="fullscreen-active"></div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1,2,1])
+    if c2.button("✕ Zamknij tryb gry", use_container_width=True, type="primary", key="exit_fs_top"):
+        st.session_state.fullscreen = False
+        st.rerun()
+    st.markdown("<br>", unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────
+#  INFORMACJA O FILTRZE (PLAYLIŚCIE)
+# ─────────────────────────────────────────────
+if st.session_state.playlist_name != "Wszystkie":
+    pl_len = len(st.session_state.playlist)
+    try:
+        pos = st.session_state.playlist.index(st.session_state.current_idx) + 1
+    except:
+        pos = 1
+    
+    col_inf1, col_inf2 = st.columns([4, 1])
+    col_inf1.info(f"🎵 Aktywny filtr: **{st.session_state.playlist_name}** (Piosenka {pos} z {pl_len})")
+    if col_inf2.button("✕ Wyczyść", use_container_width=True):
+        st.session_state.playlist = list(range(len(st.session_state.songs)))
+        st.session_state.playlist_name = "Wszystkie"
+        st.rerun()
+
+# ─────────────────────────────────────────────
 #  PIOSENKA — widok główny
 # ─────────────────────────────────────────────
 
 song_html = build_song_html(song, st.session_state.transposition)
 st.markdown(song_html, unsafe_allow_html=True)
 
-# JS: obsługa kliknięcia tagu (ustawia query param i przeładowuje)
-# JS: obsługa transpozycji bez rerenderu Streamlit
-st.markdown("""
-<script>
-function filterByTag(tag) {
-    const url = new URL(window.location.href);
-    url.searchParams.set('tag', tag);
-    window.location.href = url.toString();
-}
-
-// ── Transpozycja przez JS ───────────────────────────────
-const NOTES_MAJ = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"];
-const NOTES_MIN = ["c","cis","d","dis","e","f","fis","g","gis","a","b","h"];
-
-function transposeChord(chord, steps) {
-    if (steps === 0) return chord;
-    const m = chord.match(/^([A-H][is]*|[a-h][is]*)(.*)$/);
-    if (!m) return chord;
-    const [, base, suffix] = m;
-    let arr = NOTES_MAJ.includes(base) ? NOTES_MAJ : (NOTES_MIN.includes(base) ? NOTES_MIN : null);
-    if (!arr) return chord;
-    return arr[((arr.indexOf(base) + steps) % 12 + 12) % 12] + suffix;
-}
-
-let jsTransposition = 0;
-
-function applyJsTransposition() {
-    document.querySelectorAll('.chords-col[data-chords]').forEach(el => {
-        const orig = el.getAttribute('data-chords');
-        if (!orig.trim()) return;
-        el.textContent = orig.trim().split(/[ \t]+/).map(c => transposeChord(c, jsTransposition)).join(' ');
-    });
-    const disp = document.getElementById('js-trans-display');
-    if (disp) disp.textContent = (jsTransposition >= 0 ? '+' : '') + jsTransposition;
-}
-
-window._transposeUp = function() { jsTransposition++; applyJsTransposition(); }
-window._transposeDown = function() { jsTransposition--; applyJsTransposition(); }
-window._transposeReset = function() { jsTransposition = 0; applyJsTransposition(); }
-</script>
-""", unsafe_allow_html=True)
-
 # ─────────────────────────────────────────────
-#  PANEL STEROWANIA (domyślnie zwinięty)
+#  PANEL STEROWANIA
 # ─────────────────────────────────────────────
 
 st.markdown('<div class="controls-section">', unsafe_allow_html=True)
 
 with st.expander("🎛️ Sterowanie", expanded=False):
 
-    # ── Nawigacja ──
+    # ── Nawigacja (działa w obrębie aktualnego filtra/tagu!) ──
     st.markdown('<div class="nav-btn">', unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         if st.button("⬅️ Wstecz", key="nav_prev", use_container_width=True):
-            set_song_by_idx(st.session_state.current_idx - 1)
-            st.rerun()
+            go_prev_song()
     with c2:
         if st.button("➡️ Dalej", key="nav_next", use_container_width=True):
-            set_song_by_idx(st.session_state.current_idx + 1)
-            st.rerun()
+            go_next_song()
     with c3:
         if st.button("🎲 Losowa", key="nav_rand", use_container_width=True):
-            set_song_by_idx(random.randint(0, len(st.session_state.songs) - 1))
-            st.rerun()
+            go_rand_song()
     with c4:
         if st.button("⭐️ Ostatnia", key="nav_last", use_container_width=True):
-            set_song_by_idx(len(st.session_state.songs) - 1)
+            set_song_by_idx(st.session_state.playlist[-1], keep_playlist=True)
             st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<hr style="opacity: 0.15;">', unsafe_allow_html=True)
 
-    # ── Transpozycja — JS (zero rerenderów) + Python backup ──
-    st.caption("Zmień tonację (JS — bez przeładowania)")
-    # Przyciski JS wywoływane przez onclick — nie triggerują Streamlit
-    st.markdown("""
-    <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
-        <button onclick="window._transposeDown()" style="padding:4px 14px; border-radius:6px; cursor:pointer; border:1px solid #ccc; background:var(--secondary-background-color); color:var(--text-color); font-size:14px;">➖</button>
-        <span id="js-trans-display" style="font-weight:bold; min-width:30px; text-align:center; color:var(--text-color);">+0</span>
-        <button onclick="window._transposeUp()" style="padding:4px 14px; border-radius:6px; cursor:pointer; border:1px solid #ccc; background:var(--secondary-background-color); color:var(--text-color); font-size:14px;">➕</button>
-        <button onclick="window._transposeReset()" style="padding:4px 14px; border-radius:6px; cursor:pointer; border:1px solid #ccc; background:var(--secondary-background-color); color:var(--text-color); font-size:13px;">↺ Reset</button>
-    </div>
-    """, unsafe_allow_html=True)
+    # ── Transpozycja — natywna Streamlit (bezpośrednio modyfikuje stan) ──
+    st.caption("Zmień tonację:")
+    t_c1, t_c2, t_c3, t_c4 = st.columns([1, 1, 1, 1])
+    with t_c1:
+        if st.button("➖ W dół", key="tr_down", use_container_width=True):
+            st.session_state.transposition -= 1
+            st.rerun()
+    with t_c2:
+        st.markdown(f"<div style='text-align:center; padding-top:6px; font-weight:bold; font-size:18px;'>{st.session_state.transposition:+d}</div>", unsafe_allow_html=True)
+    with t_c3:
+        if st.button("➕ W górę", key="tr_up", use_container_width=True):
+            st.session_state.transposition += 1
+            st.rerun()
+    with t_c4:
+        if st.button("↺ Reset", key="tr_reset", use_container_width=True):
+            st.session_state.transposition = 0
+            st.rerun()
 
     st.markdown('<hr style="opacity: 0.15;">', unsafe_allow_html=True)
 
@@ -755,7 +774,7 @@ with st.expander("🎛️ Sterowanie", expanded=False):
                     if add_song_to_sheets(new_t, parsed_lyrics):
                         st.success(f"Dodano: {new_t}")
                         reload_songs()
-                        st.session_state.current_idx = len(st.session_state.songs) - 1
+                        set_song_by_idx(len(st.session_state.songs) - 1)
                         st.rerun()
                 else:
                     st.error("Podaj tytuł i treść!")
@@ -803,23 +822,9 @@ st.markdown('</div>', unsafe_allow_html=True)
 # ─────────────────────────────────────────────
 #  TRYB PEŁNOEKRANOWY (przycisk na dole)
 # ─────────────────────────────────────────────
-
-st.markdown("""
-<div style="text-align:center; margin-top: 8px;">
-    <button id="fullscreen-toggle"
-        onclick="toggleFullscreen()"
-        style="background:transparent; border:1px solid rgba(128,128,128,0.3);
-               border-radius:8px; padding:4px 16px; cursor:pointer;
-               color:var(--text-color); font-size:13px; opacity:0.6;">
-        📖 Tryb gry
-    </button>
-</div>
-<script>
-let _fsActive = false;
-function toggleFullscreen() {
-    _fsActive = !_fsActive;
-    document.body.classList.toggle('fullscreen-mode', _fsActive);
-    document.getElementById('fullscreen-toggle').textContent = _fsActive ? '✕ Wyjdź z trybu gry' : '📖 Tryb gry';
-}
-</script>
-""", unsafe_allow_html=True)
+st.markdown("---")
+c1, c2, c3 = st.columns([1,1,1])
+with c2:
+    if st.button("📖 Tryb gry (Pełny ekran)" if not st.session_state.fullscreen else "✕ Wyjdź z trybu gry", use_container_width=True, key="toggle_fs_bottom"):
+        st.session_state.fullscreen = not st.session_state.fullscreen
+        st.rerun()
