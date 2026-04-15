@@ -82,11 +82,13 @@ def load_songs_cached():
         return []
 
 def reload_songs():
-    """Czyści cache i przeładowuje do session_state."""
+    """Czyści cache i przeładowuje piosenki, ZACHOWUJĄC bieżącą playlistę/filtr."""
     load_songs_cached.clear()
     st.session_state.songs = load_songs_cached()
-    st.session_state.playlist = list(range(len(st.session_state.songs)))
-    st.session_state.playlist_name = "Wszystkie"
+    # Inicjalizacja tylko jeśli playlista nie istnieje, żeby nie niszczyć bieżącego kontekstu tagów
+    if "playlist" not in st.session_state:
+        st.session_state.playlist = list(range(len(st.session_state.songs)))
+        st.session_state.playlist_name = "Wszystkie"
 
 def save_song_to_sheets(row_idx, title, lyrics, ratings_sum, ratings_count, tags):
     if not ws:
@@ -593,12 +595,15 @@ with st.expander("🎛️ Sterowanie", expanded=False):
     with c1:
         if st.button("⬅️ Wstecz", key="nav_prev", use_container_width=True):
             go_prev_song()
+            st.rerun()  # Wymagane, by ekran natychmiast odświeżył widok piosenki
     with c2:
         if st.button("➡️ Dalej", key="nav_next", use_container_width=True):
             go_next_song()
+            st.rerun()  # Wymagane, by ekran natychmiast odświeżył widok piosenki
     with c3:
         if st.button("🎲 Losowa", key="nav_rand", use_container_width=True):
             go_rand_song()
+            st.rerun()  # Wymagane, by ekran natychmiast odświeżył widok piosenki
     with c4:
         if st.button("⭐️ Ostatnia", key="nav_last", use_container_width=True):
             set_song_by_idx(st.session_state.playlist[-1], keep_playlist=True)
@@ -690,6 +695,9 @@ with st.expander("🎛️ Sterowanie", expanded=False):
                 song["tags"].append(new_tag_txt)
                 update_song_tags(song["row"], song["tags"])
                 reload_songs()
+                # Czyszczenie pola input po udanym dodaniu tagu
+                if "new_tag_input" in st.session_state:
+                    del st.session_state["new_tag_input"]
                 st.rerun()
 
     st.markdown('<hr style="opacity: 0.15;">', unsafe_allow_html=True)
