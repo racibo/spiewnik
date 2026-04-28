@@ -255,17 +255,6 @@ st.markdown("""
 
     hr { margin: 8px 0 !important; }
 
-    /* Tryb pełnoekranowy (obsługa z sesji) */
-    .fullscreen-active [data-testid="stSidebar"],
-    .fullscreen-active [data-testid="stHeader"],
-    .fullscreen-active .controls-section {
-        display: none !important;
-    }
-    .fullscreen-active .block-container {
-        padding-top: 1rem !important;
-        padding-bottom: 1rem !important;
-    }
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -382,20 +371,53 @@ def render_compact_tags(items, key_prefix, on_click_action, limit=None):
 #  TRANSPOZYCJA
 # ─────────────────────────────────────────────
 
+# Skala chromatyczna (12 półtonów). B = Ais (enharmonicznie)
 _NOTES_MAJ = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"]
 _NOTES_MIN = ["c","cis","d","dis","e","f","fis","g","gis","a","b","h"]
+
+# Aliasy enharmoniczne → znormalizowana nazwa w skali powyżej
+_ALIASES_MAJ = {"Ais": "B", "Es": "Dis", "As": "Gis", "Des": "Cis", "Ges": "Fis", "Ces": "H"}
+_ALIASES_MIN = {"ais": "b", "es": "dis", "as": "gis", "des": "cis", "ges": "fis", "ces": "h"}
+
+def _normalize_base(base):
+    if base in _ALIASES_MAJ:
+        return _ALIASES_MAJ[base]
+    if base in _ALIASES_MIN:
+        return _ALIASES_MIN[base]
+    return base
 
 def transpose_chord(chord, steps):
     if steps == 0:
         return chord
-    m = re.match(r"^([A-H][is]*|[a-h][is]*)(.*)$", chord)
+    m = re.match(r"^([A-H][a-z]*|[a-h][a-z]*)(.*)$", chord)
     if m:
         base, suffix = m.groups()
-        if base in _NOTES_MAJ:
-            return _NOTES_MAJ[(_NOTES_MAJ.index(base) + steps) % 12] + suffix
-        if base in _NOTES_MIN:
-            return _NOTES_MIN[(_NOTES_MIN.index(base) + steps) % 12] + suffix
+        base_norm = _normalize_base(base)
+        if base_norm in _NOTES_MAJ:
+            return _NOTES_MAJ[(_NOTES_MAJ.index(base_norm) + steps) % 12] + suffix
+        if base_norm in _NOTES_MIN:
+            return _NOTES_MIN[(_NOTES_MIN.index(base_norm) + steps) % 12] + suffix
     return chord
+
+def get_first_chord(song):
+    """Zwraca pierwszy akord piosenki lub None."""
+    for line in song.get("lyrics", []):
+        for c in line.get("chords", []):
+            if c.strip():
+                return c.strip()
+    return None
+
+def chord_to_index(chord):
+    """Zamienia akord (baza) na indeks 0-11 w skali chromatycznej, lub None."""
+    m = re.match(r"^([A-H][a-z]*|[a-h][a-z]*)", chord)
+    if not m:
+        return None
+    base_norm = _normalize_base(m.group(1))
+    if base_norm in _NOTES_MAJ:
+        return _NOTES_MAJ.index(base_norm)
+    if base_norm in _NOTES_MIN:
+        return _NOTES_MIN.index(base_norm)
+    return None
 
 def build_song_html(song, transposition):
     lines = []
@@ -449,9 +471,6 @@ if "current_idx" not in st.session_state:
 
 if "transposition" not in st.session_state:
     st.session_state.transposition = 0
-
-if "fullscreen" not in st.session_state:
-    st.session_state.fullscreen = False
 
 if "kw_lyrics" not in st.session_state:
     st.session_state.kw_lyrics = get_keywords(st.session_state.songs, "lyrics")
@@ -547,17 +566,6 @@ if not st.session_state.songs:
 song = st.session_state.songs[st.session_state.current_idx]
 
 # ─────────────────────────────────────────────
-#  TRYB PEŁNOEKRANOWY - ZAMKNIĘCIE (GÓRA)
-# ─────────────────────────────────────────────
-if st.session_state.fullscreen:
-    st.markdown('<div class="fullscreen-active"></div>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([1,2,1])
-    if c2.button("✕ Zamknij tryb gry", use_container_width=True, type="primary", key="exit_fs_top"):
-        st.session_state.fullscreen = False
-        st.rerun()
-    st.markdown("<br>", unsafe_allow_html=True)
-
-# ─────────────────────────────────────────────
 #  INFORMACJA O FILTRZE (PLAYLIŚCIE)
 # ─────────────────────────────────────────────
 if st.session_state.playlist_name != "Wszystkie":
@@ -612,23 +620,44 @@ with st.expander("🎛️ Sterowanie", expanded=False):
 
     st.markdown('<hr style="opacity: 0.15;">', unsafe_allow_html=True)
 
-    # ── Transpozycja — natywna Streamlit (bezpośrednio modyfikuje stan) ──
-    st.caption("Zmień tonację:")
-    t_c1, t_c2, t_c3, t_c4 = st.columns([1, 1, 1, 1])
-    with t_c1:
-        if st.button("➖ W dół", key="tr_down", use_container_width=True):
-            st.session_state.transposition -= 1
+    # ── Transpozycja — wybór akordu startowego ──
+    first_chord = get_first_chord(song)
+    first_idx = chord_to_index(first_chord) if first_chord else None
+
+    st.caption("Zmień tonację (wybierz akord, od którego zaczyna się piosenka):")
+    # Skala do wyboru — zawsze durowa (wielkie litery), bo to nazwa docelowa
+    _SCALE_LABELS = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B (=Ais)","H"]
+    _SCALE_VALUES = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"]
+
+    if first_idx is not None:
+        # Aktualny akord po transpozycji
+        current_chord_idx = (first_idx + st.session_state.transposition) % 12
+        target = st.selectbox(
+            "Akord startowy:",
+            options=list(range(12)),
+            index=current_chord_idx,
+            format_func=lambda i: _SCALE_LABELS[i],
+            key="tr_target_chord",
+            label_visibility="collapsed",
+        )
+        new_steps = (target - first_idx) % 12
+        # Preferuj ujemne przesunięcia gdy > 6 półtonów w górę (krótszy skok)
+        if new_steps > 6:
+            new_steps -= 12
+        if new_steps != st.session_state.transposition:
+            st.session_state.transposition = new_steps
             st.rerun()
-    with t_c2:
-        st.markdown(f"<div style='text-align:center; padding-top:6px; font-weight:bold; font-size:18px;'>{st.session_state.transposition:+d}</div>", unsafe_allow_html=True)
-    with t_c3:
-        if st.button("➕ W górę", key="tr_up", use_container_width=True):
-            st.session_state.transposition += 1
-            st.rerun()
-    with t_c4:
-        if st.button("↺ Reset", key="tr_reset", use_container_width=True):
-            st.session_state.transposition = 0
-            st.rerun()
+        t_info_col, t_reset_col = st.columns([3, 1])
+        with t_info_col:
+            orig_label = _SCALE_LABELS[first_idx]
+            target_label = _SCALE_LABELS[current_chord_idx]
+            st.caption(f"Oryginał: **{orig_label}** → teraz: **{target_label}** ({st.session_state.transposition:+d} pół.)")
+        with t_reset_col:
+            if st.button("↺ Reset", key="tr_reset", use_container_width=True):
+                st.session_state.transposition = 0
+                st.rerun()
+    else:
+        st.caption("Brak akordów w tej piosence — transpozycja niedostępna.")
 
     st.markdown('<hr style="opacity: 0.15;">', unsafe_allow_html=True)
 
@@ -704,7 +733,34 @@ with st.expander("🎛️ Sterowanie", expanded=False):
 
     # ── Polecane ──
     st.subheader("📚 Polecane")
-    tab_tags, tab_rand, tab_top = st.tabs(["🏷️ Wg Tagów", "🎲 Losowe", "🏆 Top"])
+    tab_same_tag, tab_tags, tab_rand, tab_top = st.tabs(["🔗 Inne tego tagu", "🏷️ Wg Tagów", "🎲 Losowe", "🏆 Top"])
+
+    with tab_same_tag:
+        current_tags = song.get("tags", [])
+        if not current_tags:
+            st.caption("Ta piosenka nie ma żadnych tagów.")
+        else:
+            # Zbierz piosenki pasujące do dowolnego tagu bieżącej piosenki (poza samą bieżącą)
+            def _tag_match_score(s):
+                return len(set(s.get("tags", [])) & set(current_tags))
+            same_tag_songs = [
+                s for s in st.session_state.songs
+                if s["title"] != song["title"] and _tag_match_score(s) > 0
+            ]
+            same_tag_songs.sort(key=_tag_match_score, reverse=True)
+            if same_tag_songs:
+                st.caption(f"Piosenki z pasującymi tagami ({', '.join(current_tags)}):")
+                st.markdown('<div class="list-btn">', unsafe_allow_html=True)
+                for i, ts in enumerate(same_tag_songs[:20]):
+                    common = set(ts.get("tags", [])) & set(current_tags)
+                    label = f"{ts['title']}  [{', '.join(sorted(common))}]"
+                    if st.button(label, key=f"same_tag_res_{i}", use_container_width=True):
+                        real_idx = next((j for j, s in enumerate(st.session_state.songs) if s["title"] == ts["title"]), 0)
+                        set_song_by_idx(real_idx)
+                        st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.caption("Brak innych piosenek z tymi samymi tagami.")
 
     with tab_tags:
         all_unique_tags = sorted(set(t for s in st.session_state.songs for t in s.get("tags", [])))
@@ -830,9 +886,3 @@ st.markdown('</div>', unsafe_allow_html=True)
 # ─────────────────────────────────────────────
 #  TRYB PEŁNOEKRANOWY (przycisk na dole)
 # ─────────────────────────────────────────────
-st.markdown("---")
-c1, c2, c3 = st.columns([1,1,1])
-with c2:
-    if st.button("📖 Tryb gry (Pełny ekran)" if not st.session_state.fullscreen else "✕ Wyjdź z trybu gry", use_container_width=True, key="toggle_fs_bottom"):
-        st.session_state.fullscreen = not st.session_state.fullscreen
-        st.rerun()
