@@ -869,21 +869,37 @@ with st.expander("🎛️ Sterowanie", expanded=False):
 
         with tab_pub:
             st.write("Dzięki tej funkcji jednym kliknięciem wygenerujesz statyczną bazę utworów (`songs.json`) wprost ze swoich Arkuszy Google. Gotowy plik wyślesz na GitHuba, co natychmiast zaktualizuje superszybką stronę (HTML).")
-            
-            # Pobieramy to, co już przetworzył Streamlit
-            songs_data_for_export = st.session_state.songs
-            
-            # W panelu statycznym nie potrzebujemy pola "row", można je usunąć by odchudzić plik
-            clean_songs_for_export = []
-            for s in songs_data_for_export:
-                clean_song = s.copy()
-                clean_song.pop("row", None)
-                clean_songs_for_export.append(clean_song)
-            
-            json_string = json.dumps(clean_songs_for_export, ensure_ascii=False, indent=2)
+
+            with st.expander("🔍 DIAGNOSTYKA (tymczasowe — usuń po naprawieniu)"):
+                _tok = st.secrets.get("github_token", "")
+                _repo = st.secrets.get("github_repo", "")
+                st.write(f"Długość tokena: {len(_tok)} znaków")
+                st.code(f"Początek: {_tok[:8]!r}")
+                st.code(f"Koniec:   {_tok[-6:]!r}")
+                st.write(f"Czy zawiera spację/tab/nową linię: {any(c.isspace() for c in _tok)}")
+                st.write(f"github_repo (cała wartość): {_repo!r}")
+                if st.button("Testuj token na żywo (GET /user)"):
+                    _r = requests.get("https://api.github.com/user", headers={"Authorization": f"token {_tok}"})
+                    st.write(f"Status: {_r.status_code}")
+                    st.json(_r.json())
+
+            def _build_clean_json_from_fresh_data():
+                """Czyści cache, pobiera świeże dane z arkusza i buduje JSON bez pola 'row'."""
+                load_songs_cached.clear()
+                fresh_songs = load_songs_cached()
+                st.session_state.songs = fresh_songs
+
+                clean_songs = []
+                for s in fresh_songs:
+                    s_clean = s.copy()
+                    s_clean.pop("row", None)
+                    clean_songs.append(s_clean)
+
+                return json.dumps(clean_songs, ensure_ascii=False, indent=2)
 
             if st.button("⚡ GENERUJ I PUBLIKUJ NA GITHUB", type="primary", use_container_width=True):
                 with st.spinner("Pobieranie najnowszych danych i wysyłanie pliku..."):
+                    json_string = _build_clean_json_from_fresh_data()
                     success, response_text = push_json_to_github(json_string)
                     if success:
                         st.success("🎉 Sukces! Śpiewnik został zaktualizowany na serwerze.")
@@ -892,9 +908,23 @@ with st.expander("🎛️ Sterowanie", expanded=False):
 
             st.markdown("---")
             st.write("Możesz również wygenerować plik ręcznie i zapisać na swoim dysku:")
+
+            if st.button("🔄 Odśwież dane przed pobraniem", use_container_width=True):
+                st.session_state["_manual_json_string"] = _build_clean_json_from_fresh_data()
+                st.success("Dane odświeżone — możesz teraz pobrać plik poniżej.")
+
+            if "_manual_json_string" not in st.session_state:
+                # Pierwsze wejście w zakładkę: pokaż coś sensownego do pobrania, bazując na aktualnym session_state
+                fallback_clean = []
+                for s in st.session_state.songs:
+                    s_clean = s.copy()
+                    s_clean.pop("row", None)
+                    fallback_clean.append(s_clean)
+                st.session_state["_manual_json_string"] = json.dumps(fallback_clean, ensure_ascii=False, indent=2)
+
             st.download_button(
                 label="📥 Pobierz bazę jako songs.json",
-                data=json_string,
+                data=st.session_state["_manual_json_string"],
                 file_name="songs.json",
                 mime="application/json",
                 use_container_width=True
