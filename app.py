@@ -235,17 +235,7 @@ with tab_edit:
             st.session_state.edit_idx = idx
         song = songs[idx]
 
-        titles = [s["title"] for s in songs]
-
-        picked_title = st.selectbox(
-            "Wybierz piosenkę:", titles,
-            index=idx,
-            key="edit_select",
-        )
-        picked_idx = titles.index(picked_title)
-        if picked_idx != idx:
-            select_song(picked_idx)
-            st.rerun()
+        st.caption(f"Edytujesz: **{song['title']}**")
 
         edit_title = st.text_input("Tytuł:", value=song["title"], key=f"edit_title_{idx}")
         edit_lyrics = st.text_area(
@@ -273,18 +263,7 @@ with tab_del:
             idx = st.session_state.edit_idx
             if idx < 0 or idx >= len(songs):
                 idx = 0
-            titles = [s["title"] for s in songs]
-
-            del_title = st.selectbox(
-                "Wybierz do usunięcia:", titles,
-                index=idx,
-                key="del_select",
-            )
-            del_idx = titles.index(del_title)
-            if del_idx != idx:
-                select_song(del_idx)
-                st.rerun()
-            song_to_del = songs[del_idx]
+            song_to_del = songs[idx]
 
             st.warning(f"⚠️ Usunąć **{song_to_del['title']}**?")
             if st.button("🗑️ POTWIERDZAM USUNIĘCIE", type="primary", use_container_width=True):
