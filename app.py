@@ -165,8 +165,15 @@ st.title("🎵 Warsztat piosenek")
 
 if "songs" not in st.session_state:
     st.session_state.songs = load_songs()
+if "edit_idx" not in st.session_state:
+    st.session_state.edit_idx = 0
 
 songs = st.session_state.songs
+
+def select_song(idx):
+    st.session_state.edit_idx = idx
+    for k in ["edit_title", "edit_lyrics", "edit_tags", "del_pin"]:
+        st.session_state.pop(k, None)
 
 # ─────────────────────────────────────────────
 #  SIDEBAR — lista + szukaj
@@ -185,7 +192,7 @@ with st.sidebar:
         tags_str = ", ".join(s.get("tags", [])) if s.get("tags") else ""
         label = f"{s['title']}" + (f" [{tags_str}]" if tags_str else "")
         if st.button(label, key=f"pick_{i}", use_container_width=True):
-            st.session_state.edit_idx = i
+            select_song(i)
             st.rerun()
 
 # ─────────────────────────────────────────────
@@ -219,27 +226,32 @@ with tab_edit:
     st.subheader("Edytuj piosenkę")
 
     if songs:
-        edit_idx = st.session_state.get("edit_idx", 0)
-        if edit_idx < 0 or edit_idx >= len(songs):
-            edit_idx = 0
-        song = songs[edit_idx]
-
-        st.caption(f"Edytujesz: **{song['title']}**")
+        idx = st.session_state.edit_idx
+        if idx < 0 or idx >= len(songs):
+            idx = 0
+            st.session_state.edit_idx = idx
+        song = songs[idx]
 
         titles = [s["title"] for s in songs]
-        picked_title = st.selectbox("Zmień piosenkę:", titles, index=edit_idx, key="edit_select")
-        picked_idx = titles.index(picked_title)
-        if picked_idx != edit_idx:
-            st.session_state.edit_idx = picked_idx
-            st.rerun()
 
-        edit_title = st.text_input("Tytuł:", value=song["title"], key="edit_title")
+        def on_edit_select():
+            new_idx = titles.index(st.session_state["edit_select"])
+            select_song(new_idx)
+
+        picked_title = st.selectbox(
+            "Wybierz piosenkę:", titles,
+            index=idx,
+            key="edit_select",
+            on_change=on_edit_select,
+        )
+
+        edit_title = st.text_input("Tytuł:", value=song["title"], key=f"edit_title_{idx}")
         edit_lyrics = st.text_area(
             "Tekst (format: tekst | chwyty):",
             value=lyrics_to_text(song["lyrics"]),
-            height=300, key="edit_lyrics"
+            height=300, key=f"edit_lyrics_{idx}"
         )
-        edit_tags = st.text_input("Tagi (przecinki):", value=", ".join(song.get("tags", [])), key="edit_tags")
+        edit_tags = st.text_input("Tagi (przecinki):", value=", ".join(song.get("tags", [])), key=f"edit_tags_{idx}")
 
         if st.button("💾 Zapisz zmiany", type="primary", use_container_width=True):
             if save_song(song["row"], edit_title, edit_lyrics, edit_tags):
@@ -256,24 +268,30 @@ with tab_del:
     pin = st.text_input("PIN:", type="password", key="del_pin")
     if pin == ADMIN_PIN:
         if songs:
-            edit_idx = st.session_state.get("edit_idx", 0)
-            if edit_idx < 0 or edit_idx >= len(songs):
-                edit_idx = 0
-            song_to_del = songs[edit_idx]
+            idx = st.session_state.edit_idx
+            if idx < 0 or idx >= len(songs):
+                idx = 0
+            titles = [s["title"] for s in songs]
+
+            def on_del_select():
+                new_idx = titles.index(st.session_state["del_select"])
+                select_song(new_idx)
+
+            del_title = st.selectbox(
+                "Wybierz do usunięcia:", titles,
+                index=idx,
+                key="del_select",
+                on_change=on_del_select,
+            )
+            del_idx = titles.index(del_title)
+            song_to_del = songs[del_idx]
 
             st.warning(f"⚠️ Usunąć **{song_to_del['title']}**?")
-
-            titles = [s["title"] for s in songs]
-            del_title = st.selectbox("Zmień piosenkę:", titles, index=edit_idx, key="del_select")
-            del_idx = titles.index(del_title)
-            if del_idx != edit_idx:
-                st.session_state.edit_idx = del_idx
-                st.rerun()
-            song_to_del = songs[del_idx]
             if st.button("🗑️ POTWIERDZAM USUNIĘCIE", type="primary", use_container_width=True):
                 if delete_song(song_to_del["row"]):
                     st.success("Usunięto!")
                     st.session_state.songs = load_songs()
+                    select_song(0)
                     st.rerun()
         else:
             st.info("Brak piosenek.")
