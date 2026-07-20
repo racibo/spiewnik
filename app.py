@@ -134,7 +134,10 @@ def save_song(row_idx, title, lyrics_text, tags_text):
         return False
     try:
         tags = [t.strip() for t in tags_text.split(",") if t.strip()]
-        ws.update([[title, lyrics_text, "", "", ", ".join(tags)]], f"A{row_idx}:E{row_idx}", raw=False)
+        existing = ws.row_values(row_idx)
+        ratings_sum = existing[2] if len(existing) > 2 else "0"
+        ratings_count = existing[3] if len(existing) > 3 else "0"
+        ws.update([[title, lyrics_text, ratings_sum, ratings_count, ", ".join(tags)]], f"A{row_idx}:E{row_idx}", raw=False)
         return True
     except Exception as e:
         st.error(f"Błąd zapisu: {e}")
