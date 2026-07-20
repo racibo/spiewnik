@@ -219,13 +219,19 @@ with tab_edit:
     st.subheader("Edytuj piosenkę")
 
     if songs:
+        edit_idx = st.session_state.get("edit_idx", 0)
+        if edit_idx < 0 or edit_idx >= len(songs):
+            edit_idx = 0
+        song = songs[edit_idx]
+
+        st.caption(f"Edytujesz: **{song['title']}**")
+
         titles = [s["title"] for s in songs]
-        default_idx = st.session_state.get("edit_idx", 0)
-        if default_idx < 0 or default_idx >= len(songs):
-            default_idx = 0
-        picked_title = st.selectbox("Wybierz piosenkę:", titles, index=default_idx, key="edit_select")
-        idx = titles.index(picked_title)
-        song = songs[idx]
+        picked_title = st.selectbox("Zmień piosenkę:", titles, index=edit_idx, key="edit_select")
+        picked_idx = titles.index(picked_title)
+        if picked_idx != edit_idx:
+            st.session_state.edit_idx = picked_idx
+            st.rerun()
 
         edit_title = st.text_input("Tytuł:", value=song["title"], key="edit_title")
         edit_lyrics = st.text_area(
@@ -250,15 +256,20 @@ with tab_del:
     pin = st.text_input("PIN:", type="password", key="del_pin")
     if pin == ADMIN_PIN:
         if songs:
-            titles = [s["title"] for s in songs]
-            default_idx = st.session_state.get("edit_idx", 0)
-            if default_idx < 0 or default_idx >= len(songs):
-                default_idx = 0
-            del_title = st.selectbox("Wybierz do usunięcia:", titles, index=default_idx, key="del_select")
-            del_idx = titles.index(del_title)
-            song_to_del = songs[del_idx]
+            edit_idx = st.session_state.get("edit_idx", 0)
+            if edit_idx < 0 or edit_idx >= len(songs):
+                edit_idx = 0
+            song_to_del = songs[edit_idx]
 
             st.warning(f"⚠️ Usunąć **{song_to_del['title']}**?")
+
+            titles = [s["title"] for s in songs]
+            del_title = st.selectbox("Zmień piosenkę:", titles, index=edit_idx, key="del_select")
+            del_idx = titles.index(del_title)
+            if del_idx != edit_idx:
+                st.session_state.edit_idx = del_idx
+                st.rerun()
+            song_to_del = songs[del_idx]
             if st.button("🗑️ POTWIERDZAM USUNIĘCIE", type="primary", use_container_width=True):
                 if delete_song(song_to_del["row"]):
                     st.success("Usunięto!")
