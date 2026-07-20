@@ -219,9 +219,12 @@ with tab_edit:
     st.subheader("Edytuj piosenkę")
 
     if songs:
-        idx_options = {s["title"]: i for i, s in enumerate(songs)}
-        picked = st.selectbox("Wybierz piosenkę:", list(idx_options.keys()), key="edit_select")
-        idx = idx_options[picked]
+        titles = [s["title"] for s in songs]
+        default_idx = st.session_state.get("edit_idx", 0)
+        if default_idx < 0 or default_idx >= len(songs):
+            default_idx = 0
+        picked_title = st.selectbox("Wybierz piosenkę:", titles, index=default_idx, key="edit_select")
+        idx = titles.index(picked_title)
         song = songs[idx]
 
         edit_title = st.text_input("Tytuł:", value=song["title"], key="edit_title")
@@ -247,9 +250,12 @@ with tab_del:
     pin = st.text_input("PIN:", type="password", key="del_pin")
     if pin == ADMIN_PIN:
         if songs:
-            del_options = {s["title"]: i for i, s in enumerate(songs)}
-            del_picked = st.selectbox("Wybierz do usunięcia:", list(del_options.keys()), key="del_select")
-            del_idx = del_options[del_picked]
+            titles = [s["title"] for s in songs]
+            default_idx = st.session_state.get("edit_idx", 0)
+            if default_idx < 0 or default_idx >= len(songs):
+                default_idx = 0
+            del_title = st.selectbox("Wybierz do usunięcia:", titles, index=default_idx, key="del_select")
+            del_idx = titles.index(del_title)
             song_to_del = songs[del_idx]
 
             st.warning(f"⚠️ Usunąć **{song_to_del['title']}**?")
