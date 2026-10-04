@@ -148,6 +148,19 @@ with h_col3:
 # ------------------------------
 # 7. RENDER PIEŚNI
 # ------------------------------
+def parse_chord_text(chord_text):
+    """Zachowuje dodatkowe znaczniki | używane do pozycjonowania akordów."""
+    return chord_text.strip().split() if chord_text.strip() else []
+
+
+def parse_lyrics_line(line):
+    """Pierwszy | oddziela tekst; kolejne | pozostają w części akordowej."""
+    if "|" not in line:
+        return {"text": line.strip(), "chords": []}
+    text, chord_text = line.split("|", 1)
+    return {"text": text.strip(), "chords": parse_chord_text(chord_text)}
+
+
 def transpose_chord(chord, steps):
     D = ["C","Cis","D","Dis","E","F","Fis","G","Gis","A","B","H"]
     m = ["c","cis","d","dis","e","f","fis","g","gis","a","b","h"]
@@ -215,7 +228,7 @@ with st.expander("🛠️ PANEL ZARZĄDZANIA"):
         n_t = st.text_input("Tytuł nowej piosenki:", key="new_title")
         n_l = st.text_area("Tekst | Akordy:", height=200, key="new_content")
         if st.button("Dodaj piosenkę", key="btn_add_song"):
-            parsed = [{"text": p.split("|")[0].strip(), "chords": p.split("|")[1].strip().split()} if "|" in p else {"text": p.strip(), "chords": []} for p in n_l.split("\n")]
+            parsed = [parse_lyrics_line(line) for line in n_l.split("\n")]
             songs.append({"title": n_t, "lyrics": parsed})
             save_json("songs.json", songs); st.rerun()
     with tab3:
