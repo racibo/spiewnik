@@ -62,6 +62,48 @@ def push_json_to_github(json_content_str):
 #  ŁADOWANIE / ZAPIS
 # ─────────────────────────────────────────────
 
+def parse_chords(chords):
+    """Normalizuje zapis akordów, zachowując dodatkowe znaczniki |.
+
+    Przykłady:
+      'A G'   -> ['A', 'G']
+      'A |G'  -> ['A', '|G']
+      'A | G' -> ['A', '|', 'G']
+
+    Nie usuwamy kolejnych '|', ponieważ frontend używa ich
+    do ustawiania dodatkowych odstępów w trybie „akordy nad”.
+    """
+    if chords is None:
+        return []
+
+    if isinstance(chords, list):
+        result = []
+        for item in chords:
+            if item is None:
+                continue
+            result.extend(str(item).split())
+        return result
+
+    return str(chords).strip().split()
+
+
+def parse_lyrics_line(line):
+    """Rozdziela tekst od akordów tylko przy pierwszym |.
+
+    Wszystkie kolejne | należą już do zapisu akordów i muszą zostać
+    zachowane, np.:
+        Tekst | A |G
+    """
+    if "|" not in line:
+        return {"text": line.strip(), "chords": []}
+
+    text, chord_text = line.split("|", 1)
+    return {
+        "text": text.strip(),
+        "chords": parse_chords(chord_text),
+    }
+
+
 def load_songs():
     if not ws:
         return []
@@ -76,23 +118,22 @@ def load_songs():
                 lyrics_raw = row[1].strip() if len(row) > 1 else ""
                 tags_raw = row[4].strip() if len(row) > 4 else ""
                 lyrics = []
+
                 if lyrics_raw.startswith("["):
                     try:
                         for item in json.loads(lyrics_raw):
                             if isinstance(item, dict):
-                                chords = item.get("chords", [])
-                                if isinstance(chords, str):
-                                    chords = chords.split()
-                                lyrics.append({"text": item.get("text", "").strip(), "chords": chords})
+                                lyrics.append({
+                                    "text": item.get("text", "").strip(),
+                                    "chords": parse_chords(item.get("chords", [])),
+                                })
                     except Exception:
                         lyrics.append({"text": lyrics_raw, "chords": []})
                 else:
-                    for line in lyrics_raw.split("\n"):
-                        if "|" in line:
-                            parts = line.split("|", 1)
-                            lyrics.append({"text": parts[0].strip(), "chords": parts[1].strip().split() if parts[1].strip() else []})
-                        else:
-                            lyrics.append({"text": line.strip(), "chords": []})
+                    for line in lyrics_raw.split("
+"):
+                        lyrics.append(parse_lyrics_line(line))
+
                 songs.append({
                     "title": title,
                     "lyrics": lyrics,
@@ -104,18 +145,24 @@ def load_songs():
         st.error(f"Błąd ładowania: {e}")
         return []
 
+
 def lyrics_to_text(lyrics):
-    return "\n".join([f"{l['text']} | {' '.join(l.get('chords', []))}" for l in lyrics])
+    lines = []
+    for line in lyrics:
+        text = line.get("text", "")
+        chords = " ".join(parse_chords(line.get("chords", [])))
+        if chords:
+            lines.append(f"{text} | {chords}")
+        else:
+            lines.append(text)
+    return "
+".join(lines)
+
 
 def text_to_lyrics(text):
-    lyrics = []
-    for line in text.split("\n"):
-        parts = line.split("|", 1)
-        if len(parts) > 1:
-            lyrics.append({"text": parts[0].strip(), "chords": parts[1].strip().split() if parts[1].strip() else []})
-        else:
-            lyrics.append({"text": line.strip(), "chords": []})
-    return lyrics
+    return [parse_lyrics_line(line) for line in text.split("
+")]
+
 
 def add_song(title, lyrics_text, tags_text=""):
     if not ws:
@@ -128,6 +175,7 @@ def add_song(title, lyrics_text, tags_text=""):
     except Exception as e:
         st.error(f"Błąd dodawania: {e}")
         return False
+
 
 def save_song(row_idx, title, lyrics_text, tags_text):
     if not ws:
@@ -142,6 +190,7 @@ def save_song(row_idx, title, lyrics_text, tags_text):
     except Exception as e:
         st.error(f"Błąd zapisu: {e}")
         return False
+
 
 def delete_song(row_idx):
     if not ws:
@@ -210,7 +259,10 @@ with tab_add:
     new_title = st.text_input("Tytuł:", key="add_title")
     new_lyrics = st.text_area(
         "Tekst (format: tekst | chwyty):",
-        placeholder="Zwrotka 1\nRefren\n\nTekst | C F G C",
+        placeholder="Zwrotka 1
+Refren
+
+Tekst | C F G C",
         height=300, key="add_lyrics"
     )
     new_tags = st.text_input("Tagi (przecinki):", key="add_tags", placeholder="np. ognisko, klasyk")
