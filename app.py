@@ -226,7 +226,7 @@ st.info(
 Najpierw wybierz piosenkę do edycji lub kliknij **Dodaj piosenkę**.
 
 Następnie edytuj zachowując następujące zasady:
-- Po każdym wersie wstawiaj znak **|** (SHIFT plus ENTER) i to, co umieścisz za tym znakiem, jest odczytywane jako akord.
+- Po każdym wersie wstawiaj znak **|** (przycisk nad klawiszem ENTER) i to, co umieścisz za tym znakiem, jest odczytywane jako akord.
 - Jeśli w tym samym wersie znowu powtórzysz ten znak, zwiększy się odstęp między akordami w trybie **„akordy nad tekstem”**."""
 )
 
