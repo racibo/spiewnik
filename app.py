@@ -130,8 +130,7 @@ def load_songs():
                     except Exception:
                         lyrics.append({"text": lyrics_raw, "chords": []})
                 else:
-                    for line in lyrics_raw.split("
-"):
+                    for line in lyrics_raw.split("\n"):
                         lyrics.append(parse_lyrics_line(line))
 
                 songs.append({
@@ -155,13 +154,11 @@ def lyrics_to_text(lyrics):
             lines.append(f"{text} | {chords}")
         else:
             lines.append(text)
-    return "
-".join(lines)
+    return "\n".join(lines)
 
 
 def text_to_lyrics(text):
-    return [parse_lyrics_line(line) for line in text.split("
-")]
+    return [parse_lyrics_line(line) for line in text.split("\n")]
 
 
 def add_song(title, lyrics_text, tags_text=""):
@@ -259,10 +256,7 @@ with tab_add:
     new_title = st.text_input("Tytuł:", key="add_title")
     new_lyrics = st.text_area(
         "Tekst (format: tekst | chwyty):",
-        placeholder="Zwrotka 1
-Refren
-
-Tekst | C F G C",
+        placeholder="Zwrotka 1\nRefren\n\nTekst | C F G C",
         height=300, key="add_lyrics"
     )
     new_tags = st.text_input("Tagi (przecinki):", key="add_tags", placeholder="np. ognisko, klasyk")
