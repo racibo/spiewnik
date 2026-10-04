@@ -189,6 +189,18 @@ def save_song(row_idx, title, lyrics_text, tags_text):
         return False
 
 
+
+def publish_current_songs():
+    """Generuje aktualny songs.json i publikuje go na GitHub."""
+    load_songs_cache = load_songs()
+    clean = []
+    for s in load_songs_cache:
+        sc = s.copy()
+        sc.pop("row", None)
+        clean.append(sc)
+    json_str = json.dumps(clean, ensure_ascii=False, indent=2)
+    return push_json_to_github(json_str)
+
 def delete_song(row_idx):
     if not ws:
         return False
@@ -207,6 +219,16 @@ st.set_page_config(page_title="Śpiewnik — Warsztat", page_icon="🎵", layout
 ADMIN_PIN = "1234"
 
 st.title("🎵 Warsztat piosenek")
+
+st.info(
+    """**Instrukcja**
+
+Najpierw wybierz piosenkę do edycji lub kliknij **Dodaj piosenkę**.
+
+Następnie edytuj zachowując następujące zasady:
+- Po każdym wersie wstawiaj znak **|** (SHIFT plus ENTER) i to, co umieścisz za tym znakiem, jest odczytywane jako akord.
+- Jeśli w tym samym wersie znowu powtórzysz ten znak, zwiększy się odstęp między akordami w trybie **„akordy nad tekstem”**."""
+)
 
 # ─────────────────────────────────────────────
 #  ŁADOWANIE
@@ -264,8 +286,12 @@ with tab_add:
     if st.button("➕ Dodaj piosenkę", type="primary", use_container_width=True):
         if new_title.strip() and new_lyrics.strip():
             if add_song(new_title.strip(), new_lyrics, new_tags):
-                st.success(f"Dodano: {new_title}")
                 st.session_state.songs = load_songs()
+                ok, resp = publish_current_songs()
+                if ok:
+                    st.success(f"Dodano i opublikowano: {new_title}")
+                else:
+                    st.warning(f"Dodano piosenkę, ale publikacja na GitHub nie powiodła się: {resp}")
                 st.rerun()
         else:
             st.error("Podaj tytuł i tekst!")
@@ -293,8 +319,12 @@ with tab_edit:
 
         if st.button("💾 Zapisz zmiany", type="primary", use_container_width=True):
             if save_song(song["row"], edit_title, edit_lyrics, edit_tags):
-                st.success("Zapisano!")
                 st.session_state.songs = load_songs()
+                ok, resp = publish_current_songs()
+                if ok:
+                    st.success("Zapisano i opublikowano!")
+                else:
+                    st.warning(f"Zapisano zmiany, ale publikacja na GitHub nie powiodła się: {resp}")
                 st.rerun()
     else:
         st.info("Brak piosenek w bazie.")
@@ -329,14 +359,7 @@ with tab_pub:
 
     if st.button("⚡ GENERUJ I PUBLIKUJ NA GITHUB", type="primary", use_container_width=True):
         with st.spinner("Pobieranie danych i wysyłanie..."):
-            load_songs_cache = load_songs()
-            clean = []
-            for s in load_songs_cache:
-                sc = s.copy()
-                sc.pop("row", None)
-                clean.append(sc)
-            json_str = json.dumps(clean, ensure_ascii=False, indent=2)
-            ok, resp = push_json_to_github(json_str)
+            ok, resp = publish_current_songs()
             if ok:
                 st.success("🎉 Opublikowano!")
             else:
