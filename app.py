@@ -42,21 +42,34 @@ def push_json_to_github(json_content_str):
         "Accept": "application/vnd.github.v3+json"
     }
 
-    sha = None
-    res = requests.get(url, headers=headers)
-    if res.status_code == 200:
-        sha = res.json().get("sha")
+    try:
+        res = requests.get(url, headers=headers, timeout=20)
+    except Exception as e:
+        return False, f"GET GitHub nie powiódł się: {e}"
+
+    if res.status_code != 200:
+        return False, f"GitHub GET {res.status_code}: {res.text}"
+
+    sha = res.json().get("sha")
+    if not sha:
+        return False, f"GitHub nie zwrócił SHA pliku songs.json: {res.text}"
 
     content_b64 = base64.b64encode(json_content_str.encode('utf-8')).decode('utf-8')
     payload = {
         "message": "Aktualizacja bazy utworów via Streamlit",
-        "content": content_b64
+        "content": content_b64,
+        "sha": sha
     }
-    if sha:
-        payload["sha"] = sha
 
-    put_res = requests.put(url, headers=headers, json=payload)
-    return put_res.status_code in [200, 201], put_res.text
+    try:
+        put_res = requests.put(url, headers=headers, json=payload, timeout=20)
+    except Exception as e:
+        return False, f"PUT GitHub nie powiódł się: {e}"
+
+    if put_res.status_code in [200, 201]:
+        return True, put_res.text
+
+    return False, f"GitHub PUT {put_res.status_code}: {put_res.text}"
 
 # ─────────────────────────────────────────────
 #  ŁADOWANIE / ZAPIS
@@ -295,9 +308,9 @@ with tab_add:
                 ok, resp = publish_current_songs()
                 if ok:
                     st.success(f"Dodano i opublikowano: {new_title}")
+                    st.rerun()
                 else:
-                    st.warning(f"Dodano piosenkę, ale publikacja na GitHub nie powiodła się: {resp}")
-                st.rerun()
+                    st.error(f"⚠️ Piosenkę zapisano w Google Sheets, ale publikacja na GitHub nie powiodła się.\n\n{resp}")
         else:
             st.error("Podaj tytuł i tekst!")
 
@@ -328,9 +341,9 @@ with tab_edit:
                 ok, resp = publish_current_songs()
                 if ok:
                     st.success("Zapisano i opublikowano!")
+                    st.rerun()
                 else:
-                    st.warning(f"Zapisano zmiany, ale publikacja na GitHub nie powiodła się: {resp}")
-                st.rerun()
+                    st.error(f"⚠️ Zmiany zapisano w Google Sheets, ale publikacja na GitHub nie powiodła się.\n\n{resp}")
     else:
         st.info("Brak piosenek w bazie.")
 
