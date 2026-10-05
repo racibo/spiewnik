@@ -63,15 +63,14 @@ def push_json_to_github(json_content_str):
 # ─────────────────────────────────────────────
 
 def parse_chords(chords):
-    """Normalizuje zapis akordów, zachowując dodatkowe znaczniki |.
+    """Normalizuje akordy, zachowując odstępy wewnątrz nowego zapisu.
 
-    Przykłady:
-      'A G'   -> ['A', 'G']
-      'A |G'  -> ['A', '|G']
-      'A | G' -> ['A', '|', 'G']
+    Nowy zapis może być przechowywany jako jeden string, np.
+    'A       G   D'. Odstępy są wtedy informacją o położeniu akordów
+    w trybie „akordy nad tekstem”.
 
-    Nie usuwamy kolejnych '|', ponieważ frontend używa ich
-    do ustawiania dodatkowych odstępów w trybie „akordy nad”.
+    Stary zapis tablicowy, np. ['A', '|', 'G'], pozostaje obsługiwany
+    bez zmian.
     """
     if chords is None:
         return []
@@ -81,10 +80,13 @@ def parse_chords(chords):
         for item in chords:
             if item is None:
                 continue
-            result.extend(str(item).split())
+            value = str(item).strip()
+            if value:
+                result.append(value)
         return result
 
-    return str(chords).strip().split()
+    value = str(chords).strip()
+    return [value] if value else []
 
 
 def parse_lyrics_line(line):
@@ -227,7 +229,10 @@ Najpierw wybierz piosenkę do edycji lub kliknij **Dodaj piosenkę**.
 
 Następnie edytuj zachowując następujące zasady:
 - Po każdym wersie wstawiaj znak **|** (przycisk nad klawiszem ENTER) i to, co umieścisz za tym znakiem, jest odczytywane jako akord.
-- Jeśli w tym samym wersie znowu powtórzysz ten znak, zwiększy się odstęp między akordami w trybie **„akordy nad tekstem”**."""
+- Odstępy pomiędzy kolejnymi akordami możesz wykorzystać do ustawienia ich pozycji nad tekstem — np. **A       G   D** zachowa te odstępy w trybie **„akordy nad tekstem”**.
+- W trybie **„akordy obok tekstu”** te duże odstępy zostaną automatycznie zmniejszone.
+- Stary sposób z ponownym wpisaniem znaku **|** nadal działa i zwiększa odstęp między akordami w trybie **„akordy nad tekstem”**.
+- Naciśnięcie **ENTER** rozpoczyna nowy wers. Zawijanie tekstu na ekranie nie tworzy nowego wersu."""
 )
 
 # ─────────────────────────────────────────────
