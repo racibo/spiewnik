@@ -240,8 +240,9 @@ def save_and_publish_from_sheets():
     """Po zapisie zawsze pobiera aktualny stan Sheets i publikuje właśnie jego."""
     fresh_songs = load_songs()
     if not fresh_songs:
-        return False, "Nie udało się ponownie odczytać danych z Google Sheets."
-    return fresh_songs, publish_songs(fresh_songs)
+        return [], False, "Nie udało się ponownie odczytać danych z Google Sheets."
+    ok, resp = publish_songs(fresh_songs)
+    return fresh_songs, ok, resp
 
 def delete_song(row_idx):
     if not ws:
@@ -332,8 +333,7 @@ with tab_add:
         if new_title.strip() and new_lyrics.strip():
             if add_song(new_title.strip(), new_lyrics, new_tags):
                 # Google Sheets jest źródłem prawdy.
-                fresh_songs, result = save_and_publish_from_sheets()
-                ok, resp = result
+                fresh_songs, ok, resp = save_and_publish_from_sheets()
                 if ok:
                     st.session_state.songs = fresh_songs
                     st.success(f"Dodano i opublikowano: {new_title}")
