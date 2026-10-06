@@ -98,8 +98,11 @@ def parse_chords(chords):
                 result.append(value)
         return result
 
-    value = str(chords).strip()
-    return [value] if value else []
+    # Dla nowego zapisu spacje są częścią danych pozycyjnych.
+    # Nie usuwamy ich, bo spacje po "|" oraz między akordami określają
+    # położenie akordów w trybie "nad tekstem".
+    value = str(chords)
+    return [value] if value.strip() else []
 
 
 def parse_lyrics_line(line):
@@ -164,9 +167,15 @@ def lyrics_to_text(lyrics):
     lines = []
     for line in lyrics:
         text = line.get("text", "")
-        chords = " ".join(parse_chords(line.get("chords", [])))
-        if chords:
-            lines.append(f"{text} | {chords}")
+        chord_parts = parse_chords(line.get("chords", []))
+        if len(chord_parts) == 1:
+            # Nowy zapis przechowuje cały układ akordów jako jeden string.
+            # Zachowujemy dokładnie wszystkie spacje.
+            chords = chord_parts[0]
+        else:
+            chords = " ".join(chord_parts)
+        if chords.strip():
+            lines.append(f"{text} |{chords}")
         else:
             lines.append(text)
     return "\n".join(lines)
