@@ -368,8 +368,7 @@ with tab_edit:
             if save_song(song["row"], edit_title, edit_lyrics, edit_tags):
                 # Po zapisie ponownie czytamy cały arkusz. Dzięki temu
                 # songs.json zawsze odpowiada rzeczywistemu stanowi Sheets.
-                fresh_songs, result = save_and_publish_from_sheets()
-                ok, resp = result
+                fresh_songs, ok, resp = save_and_publish_from_sheets()
                 if ok:
                     st.session_state.songs = fresh_songs
                     # Po publikacji wyszukujemy edytowany utwór w świeżej bazie.
