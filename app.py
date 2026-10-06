@@ -32,44 +32,131 @@ ws = init_gsheet()
 # ─────────────────────────────────────────────
 
 def push_json_to_github(json_content_str):
+    """Publikuje songs.json do main i weryfikuje dokładnie zapisany plik.
+
+    Przepływ jest celowo dwufazowy:
+    1. pobierz aktualny SHA pliku z GitHub,
+    2. zapisz nową wersję,
+    3. ponownie pobierz plik i porównaj jego treść 1:1.
+
+    Dzięki temu komunikat „opublikowano” oznacza faktyczny zapis na GitHub,
+    a nie tylko udane żądanie PUT.
+    """
     GITHUB_TOKEN = st.secrets.get("github_token", "")
     GITHUB_REPO = st.secrets.get("github_repo", "")
+    GITHUB_BRANCH = st.secrets.get("github_branch", "main")
     GITHUB_FILE_PATH = "songs.json"
+
+    if not GITHUB_TOKEN:
+        return False, "Brak github_token w Streamlit secrets."
+    if not GITHUB_REPO:
+        return False, "Brak github_repo w Streamlit secrets."
 
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
     headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
     }
 
+    # Sprawdzenie, czy przekazujemy poprawny JSON zanim dotkniemy GitHuba.
     try:
-        res = requests.get(url, headers=headers, timeout=20)
+        json.loads(json_content_str)
     except Exception as e:
-        return False, f"GET GitHub nie powiódł się: {e}"
+        return False, f"Niepoprawny JSON przed publikacją: {e}"
 
-    if res.status_code != 200:
-        return False, f"GitHub GET {res.status_code}: {res.text}"
+    content_b64 = base64.b64encode(json_content_str.encode("utf-8")).decode("ascii")
 
-    sha = res.json().get("sha")
-    if not sha:
-        return False, f"GitHub nie zwrócił SHA pliku songs.json: {res.text}"
+    # Maksymalnie dwa podejścia. Drugie obsługuje konflikt SHA, gdy w międzyczasie
+    # ktoś inny zmieni songs.json.
+    for attempt in range(2):
+        try:
+            get_res = requests.get(
+                url,
+                headers=headers,
+                params={"ref": GITHUB_BRANCH},
+                timeout=20,
+            )
+        except Exception as e:
+            return False, f"GET GitHub nie powiódł się: {e}"
 
-    content_b64 = base64.b64encode(json_content_str.encode('utf-8')).decode('utf-8')
-    payload = {
-        "message": "Aktualizacja bazy utworów via Streamlit",
-        "content": content_b64,
-        "sha": sha
-    }
+        if get_res.status_code != 200:
+            return False, f"GitHub GET {get_res.status_code}: {get_res.text}"
 
-    try:
-        put_res = requests.put(url, headers=headers, json=payload, timeout=20)
-    except Exception as e:
-        return False, f"PUT GitHub nie powiódł się: {e}"
+        current = get_res.json()
+        sha = current.get("sha")
+        if not sha:
+            return False, f"GitHub nie zwrócił SHA pliku songs.json: {get_res.text}"
 
-    if put_res.status_code in [200, 201]:
-        return True, put_res.text
+        payload = {
+            "message": "Aktualizacja bazy utworów via Streamlit",
+            "content": content_b64,
+            "sha": sha,
+            "branch": GITHUB_BRANCH,
+        }
 
-    return False, f"GitHub PUT {put_res.status_code}: {put_res.text}"
+        try:
+            put_res = requests.put(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=20,
+            )
+        except Exception as e:
+            return False, f"PUT GitHub nie powiódł się: {e}"
+
+        if put_res.status_code in (200, 201):
+            put_data = put_res.json()
+            commit_sha = put_data.get("commit", {}).get("sha", "")
+
+            # Weryfikacja po zapisie. Nie ufamy samemu statusowi PUT.
+            try:
+                verify_res = requests.get(
+                    url,
+                    headers=headers,
+                    params={"ref": GITHUB_BRANCH},
+                    timeout=20,
+                )
+            except Exception as e:
+                return False, f"Zapisano GitHub, ale weryfikacja GET nie powiodła się: {e}"
+
+            if verify_res.status_code != 200:
+                return False, (
+                    f"Zapisano GitHub (commit {commit_sha}), ale weryfikacja "
+                    f"zwróciła HTTP {verify_res.status_code}: {verify_res.text}"
+                )
+
+            verified = verify_res.json()
+            verified_b64 = verified.get("content", "").replace("\n", "")
+            try:
+                verified_bytes = base64.b64decode(verified_b64)
+                verified_text = verified_bytes.decode("utf-8")
+            except Exception as e:
+                return False, (
+                    f"Zapisano GitHub (commit {commit_sha}), ale nie można "
+                    f"odczytać pliku podczas weryfikacji: {e}"
+                )
+
+            if verified_text != json_content_str:
+                return False, (
+                    f"GitHub przyjął zapis (commit {commit_sha}), ale zawartość "
+                    "songs.json po zapisie różni się od danych wysłanych ze Streamlit."
+                )
+
+            return True, (
+                f"Opublikowano i zweryfikowano na GitHub. "
+                f"Branch: {GITHUB_BRANCH}; commit: {commit_sha or 'brak'}."
+            )
+
+        # 409 oznacza, że SHA zdążył się zmienić — pobieramy go ponownie.
+        if put_res.status_code == 409 and attempt == 0:
+            continue
+
+        return False, f"GitHub PUT {put_res.status_code}: {put_res.text}"
+
+    return False, "Publikacja nie powiodła się po ponowieniu próby."
+
+
 
 # ─────────────────────────────────────────────
 #  ŁADOWANIE / ZAPIS
@@ -414,10 +501,19 @@ with tab_del:
             st.warning(f"⚠️ Usunąć **{song_to_del['title']}**?")
             if st.button("🗑️ POTWIERDZAM USUNIĘCIE", type="primary", use_container_width=True):
                 if delete_song(song_to_del["row"]):
-                    st.success("Usunięto!")
-                    st.session_state.songs = load_songs()
-                    select_song(0)
-                    st.rerun()
+                    # Usunięcie również musi przejść przez ten sam pipeline:
+                    # Google Sheets -> świeży odczyt -> songs.json -> weryfikacja GitHub.
+                    fresh_songs, ok, resp = save_and_publish_from_sheets()
+                    if ok:
+                        st.session_state.songs = fresh_songs
+                        select_song(0)
+                        st.success(f"Usunięto „{song_to_del['title']}” i opublikowano zmianę na GitHub.")
+                        st.rerun()
+                    else:
+                        st.error(
+                            "⚠️ Piosenkę usunięto z Google Sheets, ale publikacja na GitHub nie powiodła się.\n\n"
+                            + resp
+                        )
         else:
             st.info("Brak piosenek.")
     elif pin:
