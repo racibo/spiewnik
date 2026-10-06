@@ -205,16 +205,32 @@ def save_song(row_idx, title, lyrics_text, tags_text):
 
 
 
-def publish_current_songs():
-    """Generuje aktualny songs.json i publikuje go na GitHub."""
-    load_songs_cache = load_songs()
+def build_song(title, lyrics_text, tags_text, row_idx):
+    """Buduje rekord w tym samym formacie co load_songs()."""
+    tags = [t.strip() for t in tags_text.split(",") if t.strip()]
+    return {
+        "title": title.strip(),
+        "lyrics": text_to_lyrics(lyrics_text),
+        "tags": tags,
+        "row": row_idx,
+    }
+
+
+
+def publish_songs(songs):
+    """Publikuje dokładnie listę songs przekazaną przez wywołującego."""
     clean = []
-    for s in load_songs_cache:
-        sc = s.copy()
-        sc.pop("row", None)
-        clean.append(sc)
+    for song in songs:
+        item = dict(song)
+        item.pop("row", None)
+        clean.append(item)
     json_str = json.dumps(clean, ensure_ascii=False, indent=2)
     return push_json_to_github(json_str)
+
+
+def publish_current_songs():
+    """Ręczne ponowne opublikowanie aktualnych danych z Google Sheets."""
+    return publish_songs(load_songs())
 
 def delete_song(row_idx):
     if not ws:
@@ -288,7 +304,7 @@ with st.sidebar:
 #  GŁÓWNY PANEL
 # ─────────────────────────────────────────────
 
-tab_add, tab_edit, tab_del, tab_pub = st.tabs(["➕ Dodaj", "✏️ Edytuj", "🗑️ Usuń", "🚀 Publikuj"])
+tab_add, tab_edit, tab_del = st.tabs(["➕ Dodaj", "✏️ Edytuj", "🗑️ Usuń"])
 
 # ── DODAJ ──
 with tab_add:
@@ -304,9 +320,13 @@ with tab_add:
     if st.button("➕ Dodaj piosenkę", type="primary", use_container_width=True):
         if new_title.strip() and new_lyrics.strip():
             if add_song(new_title.strip(), new_lyrics, new_tags):
-                st.session_state.songs = load_songs()
-                ok, resp = publish_current_songs()
+                # Publikujemy dokładnie dane z formularza, bez ponownego odczytu Sheets.
+                new_row = len(st.session_state.songs) + 2
+                new_song = build_song(new_title, new_lyrics, new_tags, new_row)
+                updated_songs = list(st.session_state.songs) + [new_song]
+                ok, resp = publish_songs(updated_songs)
                 if ok:
+                    st.session_state.songs = updated_songs
                     st.success(f"Dodano i opublikowano: {new_title}")
                     st.rerun()
                 else:
@@ -337,9 +357,19 @@ with tab_edit:
 
         if st.button("💾 Zapisz zmiany", type="primary", use_container_width=True):
             if save_song(song["row"], edit_title, edit_lyrics, edit_tags):
-                st.session_state.songs = load_songs()
-                ok, resp = publish_current_songs()
+                # Publikujemy dokładnie to, co wpisano w formularzu.
+                updated_songs = []
+                for current in st.session_state.songs:
+                    if current["row"] == song["row"]:
+                        updated_songs.append(
+                            build_song(edit_title, edit_lyrics, edit_tags, song["row"])
+                        )
+                    else:
+                        updated_songs.append(current)
+
+                ok, resp = publish_songs(updated_songs)
                 if ok:
+                    st.session_state.songs = updated_songs
                     st.success("Zapisano i opublikowano!")
                     st.rerun()
                 else:
@@ -371,30 +401,4 @@ with tab_del:
     elif pin:
         st.error("Błędny PIN!")
 
-# ── PUBLIKUJ ──
-with tab_pub:
-    st.subheader("Publikacja na stronie")
-
-    if st.button("⚡ GENERUJ I PUBLIKUJ NA GITHUB", type="primary", use_container_width=True):
-        with st.spinner("Pobieranie danych i wysyłanie..."):
-            ok, resp = publish_current_songs()
-            if ok:
-                st.success("🎉 Opublikowano!")
-            else:
-                st.error(f"Błąd: {resp}")
-
-    st.markdown("---")
-
-    if st.button("📥 Pobierz songs.json", use_container_width=True):
-        clean = []
-        for s in songs:
-            sc = s.copy()
-            sc.pop("row", None)
-            clean.append(sc)
-        json_str = json.dumps(clean, ensure_ascii=False, indent=2)
-        st.download_button(
-            label="📥 Kliknij by pobrać",
-            data=json_str,
-            file_name="songs.json",
-            mime="application/json",
-        )
+# Publikacja jest automatyczna po dodaniu lub zapisaniu zmian.
