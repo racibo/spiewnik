@@ -4,6 +4,7 @@ from google.oauth2.service_account import Credentials
 import json
 import requests
 import base64
+import hashlib
 
 # ─────────────────────────────────────────────
 #  POŁĄCZENIE Z GOOGLE SHEETS
@@ -34,13 +35,8 @@ ws = init_gsheet()
 def push_json_to_github(json_content_str):
     """Publikuje songs.json do GitHub i weryfikuje zapis przez SHA blobu.
 
-    Nie pobieramy ponownie całej zawartości pliku przez Contents API, ponieważ
-    GitHub ma ograniczenia odpowiedzi dla dużych plików. Zamiast tego:
-      1. pobieramy aktualny SHA pliku,
-      2. zapisujemy nową treść,
-      3. GitHub zwraca SHA nowego bloba,
-      4. lokalnie obliczamy SHA Git bloba z dokładnie wysłanej treści,
-      5. ponownie sprawdzamy SHA pliku na branchu.
+    SHA Git blobu musi być liczone z bajtów dokładnie tak:
+    SHA1(b"blob " + długość_w_bajtach + b"\0" + treść).
     """
     GITHUB_TOKEN = st.secrets.get("github_token", "")
     GITHUB_REPO = st.secrets.get("github_repo", "")
@@ -67,10 +63,11 @@ def push_json_to_github(json_content_str):
     content_bytes = json_content_str.encode("utf-8")
     content_b64 = base64.b64encode(content_bytes).decode("ascii")
 
-    # SHA używany przez Git dla blobu: SHA1("blob <długość>\\0<treść>").
-    expected_blob_sha = hashlib.sha1(
-        f"blob {len(content_bytes)}\\0".encode("ascii") + content_bytes
-    ).hexdigest()
+    # Git blob SHA:
+    # SHA1("blob <długość_bajtów>\\0<treść>")
+    # Uwaga: musi to być prawdziwy bajt NUL (b"\0"), a nie dwa znaki "\\0".
+    git_header = f"blob {len(content_bytes)}".encode("ascii") + b"\0"
+    expected_blob_sha = hashlib.sha1(git_header + content_bytes).hexdigest()
 
     for attempt in range(2):
         try:
@@ -113,8 +110,6 @@ def push_json_to_github(json_content_str):
             commit_sha = put_data.get("commit", {}).get("sha", "")
             written_blob_sha = put_data.get("content", {}).get("sha", "")
 
-            # Najważniejsza weryfikacja: SHA bloba zwrócone przez GitHub musi
-            # być identyczne z SHA obliczonym z treści wysłanej przez Streamlit.
             if written_blob_sha != expected_blob_sha:
                 return False, (
                     f"GitHub przyjął zapis (commit {commit_sha}), ale SHA "
@@ -122,7 +117,6 @@ def push_json_to_github(json_content_str):
                     f"oczekiwano {expected_blob_sha}, otrzymano {written_blob_sha or 'brak'}."
                 )
 
-            # Druga weryfikacja: branch main wskazuje teraz na ten sam blob.
             try:
                 verify_res = requests.get(
                     url,
@@ -169,26 +163,15 @@ def push_json_to_github(json_content_str):
 # ─────────────────────────────────────────────
 
 def parse_chords(chords):
-    """Normalizuje akordy, zachowując odstępy wewnątrz nowego zapisu.
-
-    Nowy zapis może być przechowywany jako jeden string, np.
-    'A       G   D'. Odstępy są wtedy informacją o położeniu akordów
-    w trybie „akordy nad tekstem”.
-
-    Stary zapis tablicowy, np. ['A', '|', 'G'], pozostaje obsługiwany
-    bez zmian.
-    """
+    """Normalizuje akordy, zachowując odstępy wewnątrz nowego zapisu."""
     if chords is None:
         return []
 
     if isinstance(chords, list):
-        # Nowy format przechowuje cały układ akordów jako jeden element.
-        # Zachowujemy wtedy również spacje na początku i końcu.
         if len(chords) == 1:
             value = "" if chords[0] is None else str(chords[0])
             return [value] if value.strip() else []
 
-        # Stary format tablicowy: każdy element jest osobnym akordem.
         result = []
         for item in chords:
             if item is None:
@@ -198,20 +181,12 @@ def parse_chords(chords):
                 result.append(value)
         return result
 
-    # Dla nowego zapisu spacje są częścią danych pozycyjnych.
-    # Nie usuwamy ich, bo spacje po "|" oraz między akordami określają
-    # położenie akordów w trybie "nad tekstem".
     value = str(chords)
     return [value] if value.strip() else []
 
 
 def parse_lyrics_line(line):
-    """Rozdziela tekst od akordów tylko przy pierwszym |.
-
-    Wszystkie kolejne | należą już do zapisu akordów i muszą zostać
-    zachowane, np.:
-        Tekst | A |G
-    """
+    """Rozdziela tekst od akordów tylko przy pierwszym |."""
     if "|" not in line:
         return {"text": line.strip(), "chords": []}
 
@@ -269,8 +244,6 @@ def lyrics_to_text(lyrics):
         text = line.get("text", "")
         chord_parts = parse_chords(line.get("chords", []))
         if len(chord_parts) == 1:
-            # Nowy zapis przechowuje cały układ akordów jako jeden string.
-            # Zachowujemy dokładnie wszystkie spacje.
             chords = chord_parts[0]
         else:
             chords = " ".join(chord_parts)
@@ -289,9 +262,8 @@ def add_song(title, lyrics_text, tags_text=""):
     if not ws:
         return False
     try:
-        lyrics_str = lyrics_text
         tags = [t.strip() for t in tags_text.split(",") if t.strip()]
-        ws.append_row([title, lyrics_str, "0", "0", ", ".join(tags)])
+        ws.append_row([title, lyrics_text, "0", "0", ", ".join(tags)])
         return True
     except Exception as e:
         st.error(f"Błąd dodawania: {e}")
@@ -313,9 +285,7 @@ def save_song(row_idx, title, lyrics_text, tags_text):
         return False
 
 
-
 def build_song(title, lyrics_text, tags_text, row_idx):
-    """Buduje rekord w tym samym formacie co load_songs()."""
     tags = [t.strip() for t in tags_text.split(",") if t.strip()]
     return {
         "title": title.strip(),
@@ -325,9 +295,7 @@ def build_song(title, lyrics_text, tags_text, row_idx):
     }
 
 
-
 def publish_songs(songs):
-    """Publikuje dokładnie listę songs przekazaną przez wywołującego."""
     clean = []
     for song in songs:
         item = dict(song)
@@ -338,7 +306,6 @@ def publish_songs(songs):
 
 
 def publish_current_songs():
-    """Publikuje świeżo odczytane dane z Google Sheets."""
     fresh_songs = load_songs()
     if not fresh_songs:
         return False, "Nie udało się odczytać piosenek z Google Sheets."
@@ -346,12 +313,12 @@ def publish_current_songs():
 
 
 def save_and_publish_from_sheets():
-    """Po zapisie zawsze pobiera aktualny stan Sheets i publikuje właśnie jego."""
     fresh_songs = load_songs()
     if not fresh_songs:
         return [], False, "Nie udało się ponownie odczytać danych z Google Sheets."
     ok, resp = publish_songs(fresh_songs)
     return fresh_songs, ok, resp
+
 
 def delete_song(row_idx):
     if not ws:
@@ -362,6 +329,7 @@ def delete_song(row_idx):
     except Exception as e:
         st.error(f"Błąd usuwania: {e}")
         return False
+
 
 # ─────────────────────────────────────────────
 #  CONFIG
@@ -385,10 +353,6 @@ Następnie edytuj zachowując następujące zasady:
 - Naciśnięcie **ENTER** rozpoczyna nowy wers. Zawijanie tekstu na ekranie nie tworzy nowego wersu."""
 )
 
-# ─────────────────────────────────────────────
-#  ŁADOWANIE
-# ─────────────────────────────────────────────
-
 if "songs" not in st.session_state:
     st.session_state.songs = load_songs()
 if "edit_idx" not in st.session_state:
@@ -400,10 +364,6 @@ def select_song(idx):
     st.session_state.edit_idx = idx
     for k in ["edit_title", "edit_lyrics", "edit_tags", "del_pin"]:
         st.session_state.pop(k, None)
-
-# ─────────────────────────────────────────────
-#  SIDEBAR — lista + szukaj
-# ─────────────────────────────────────────────
 
 with st.sidebar:
     st.header(f"Lista ({len(songs)})")
@@ -421,13 +381,8 @@ with st.sidebar:
             select_song(i)
             st.rerun()
 
-# ─────────────────────────────────────────────
-#  GŁÓWNY PANEL
-# ─────────────────────────────────────────────
-
 tab_add, tab_edit, tab_del = st.tabs(["➕ Dodaj", "✏️ Edytuj", "🗑️ Usuń"])
 
-# ── DODAJ ──
 with tab_add:
     st.subheader("Nowa piosenka")
     new_title = st.text_input("Tytuł:", key="add_title")
@@ -441,7 +396,6 @@ with tab_add:
     if st.button("➕ Dodaj piosenkę", type="primary", use_container_width=True):
         if new_title.strip() and new_lyrics.strip():
             if add_song(new_title.strip(), new_lyrics, new_tags):
-                # Google Sheets jest źródłem prawdy.
                 fresh_songs, ok, resp = save_and_publish_from_sheets()
                 if ok:
                     st.session_state.songs = fresh_songs
@@ -452,7 +406,6 @@ with tab_add:
         else:
             st.error("Podaj tytuł i tekst!")
 
-# ── EDYTUJ ──
 with tab_edit:
     st.subheader("Edytuj piosenkę")
 
@@ -475,12 +428,9 @@ with tab_edit:
 
         if st.button("💾 Zapisz zmiany", type="primary", use_container_width=True):
             if save_song(song["row"], edit_title, edit_lyrics, edit_tags):
-                # Po zapisie ponownie czytamy cały arkusz. Dzięki temu
-                # songs.json zawsze odpowiada rzeczywistemu stanowi Sheets.
                 fresh_songs, ok, resp = save_and_publish_from_sheets()
                 if ok:
                     st.session_state.songs = fresh_songs
-                    # Po publikacji wyszukujemy edytowany utwór w świeżej bazie.
                     for new_idx, fresh_song in enumerate(fresh_songs):
                         if fresh_song["row"] == song["row"]:
                             st.session_state.edit_idx = new_idx
@@ -492,7 +442,6 @@ with tab_edit:
     else:
         st.info("Brak piosenek w bazie.")
 
-# ── USUŃ ──
 with tab_del:
     st.subheader("Usuń piosenkę")
 
@@ -507,8 +456,6 @@ with tab_del:
             st.warning(f"⚠️ Usunąć **{song_to_del['title']}**?")
             if st.button("🗑️ POTWIERDZAM USUNIĘCIE", type="primary", use_container_width=True):
                 if delete_song(song_to_del["row"]):
-                    # Usunięcie również musi przejść przez ten sam pipeline:
-                    # Google Sheets -> świeży odczyt -> songs.json -> weryfikacja GitHub.
                     fresh_songs, ok, resp = save_and_publish_from_sheets()
                     if ok:
                         st.session_state.songs = fresh_songs
