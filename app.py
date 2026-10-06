@@ -89,6 +89,13 @@ def parse_chords(chords):
         return []
 
     if isinstance(chords, list):
+        # Nowy format przechowuje cały układ akordów jako jeden element.
+        # Zachowujemy wtedy również spacje na początku i końcu.
+        if len(chords) == 1:
+            value = "" if chords[0] is None else str(chords[0])
+            return [value] if value.strip() else []
+
+        # Stary format tablicowy: każdy element jest osobnym akordem.
         result = []
         for item in chords:
             if item is None:
