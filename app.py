@@ -32,15 +32,15 @@ ws = init_gsheet()
 # ─────────────────────────────────────────────
 
 def push_json_to_github(json_content_str):
-    """Publikuje songs.json do main i weryfikuje dokładnie zapisany plik.
+    """Publikuje songs.json do GitHub i weryfikuje zapis przez SHA blobu.
 
-    Przepływ jest celowo dwufazowy:
-    1. pobierz aktualny SHA pliku z GitHub,
-    2. zapisz nową wersję,
-    3. ponownie pobierz plik i porównaj jego treść 1:1.
-
-    Dzięki temu komunikat „opublikowano” oznacza faktyczny zapis na GitHub,
-    a nie tylko udane żądanie PUT.
+    Nie pobieramy ponownie całej zawartości pliku przez Contents API, ponieważ
+    GitHub ma ograniczenia odpowiedzi dla dużych plików. Zamiast tego:
+      1. pobieramy aktualny SHA pliku,
+      2. zapisujemy nową treść,
+      3. GitHub zwraca SHA nowego bloba,
+      4. lokalnie obliczamy SHA Git bloba z dokładnie wysłanej treści,
+      5. ponownie sprawdzamy SHA pliku na branchu.
     """
     GITHUB_TOKEN = st.secrets.get("github_token", "")
     GITHUB_REPO = st.secrets.get("github_repo", "")
@@ -59,16 +59,19 @@ def push_json_to_github(json_content_str):
         "X-GitHub-Api-Version": "2022-11-28",
     }
 
-    # Sprawdzenie, czy przekazujemy poprawny JSON zanim dotkniemy GitHuba.
     try:
         json.loads(json_content_str)
     except Exception as e:
         return False, f"Niepoprawny JSON przed publikacją: {e}"
 
-    content_b64 = base64.b64encode(json_content_str.encode("utf-8")).decode("ascii")
+    content_bytes = json_content_str.encode("utf-8")
+    content_b64 = base64.b64encode(content_bytes).decode("ascii")
 
-    # Maksymalnie dwa podejścia. Drugie obsługuje konflikt SHA, gdy w międzyczasie
-    # ktoś inny zmieni songs.json.
+    # SHA używany przez Git dla blobu: SHA1("blob <długość>\\0<treść>").
+    expected_blob_sha = hashlib.sha1(
+        f"blob {len(content_bytes)}\\0".encode("ascii") + content_bytes
+    ).hexdigest()
+
     for attempt in range(2):
         try:
             get_res = requests.get(
@@ -84,14 +87,14 @@ def push_json_to_github(json_content_str):
             return False, f"GitHub GET {get_res.status_code}: {get_res.text}"
 
         current = get_res.json()
-        sha = current.get("sha")
-        if not sha:
+        current_blob_sha = current.get("sha")
+        if not current_blob_sha:
             return False, f"GitHub nie zwrócił SHA pliku songs.json: {get_res.text}"
 
         payload = {
             "message": "Aktualizacja bazy utworów via Streamlit",
             "content": content_b64,
-            "sha": sha,
+            "sha": current_blob_sha,
             "branch": GITHUB_BRANCH,
         }
 
@@ -100,7 +103,7 @@ def push_json_to_github(json_content_str):
                 url,
                 headers=headers,
                 json=payload,
-                timeout=20,
+                timeout=30,
             )
         except Exception as e:
             return False, f"PUT GitHub nie powiódł się: {e}"
@@ -108,8 +111,18 @@ def push_json_to_github(json_content_str):
         if put_res.status_code in (200, 201):
             put_data = put_res.json()
             commit_sha = put_data.get("commit", {}).get("sha", "")
+            written_blob_sha = put_data.get("content", {}).get("sha", "")
 
-            # Weryfikacja po zapisie. Nie ufamy samemu statusowi PUT.
+            # Najważniejsza weryfikacja: SHA bloba zwrócone przez GitHub musi
+            # być identyczne z SHA obliczonym z treści wysłanej przez Streamlit.
+            if written_blob_sha != expected_blob_sha:
+                return False, (
+                    f"GitHub przyjął zapis (commit {commit_sha}), ale SHA "
+                    f"zapisanego songs.json jest inne niż SHA wysłanych danych. "
+                    f"oczekiwano {expected_blob_sha}, otrzymano {written_blob_sha or 'brak'}."
+                )
+
+            # Druga weryfikacja: branch main wskazuje teraz na ten sam blob.
             try:
                 verify_res = requests.get(
                     url,
@@ -118,29 +131,24 @@ def push_json_to_github(json_content_str):
                     timeout=20,
                 )
             except Exception as e:
-                return False, f"Zapisano GitHub, ale weryfikacja GET nie powiodła się: {e}"
+                return False, (
+                    f"GitHub przyjął zapis (commit {commit_sha}), ale "
+                    f"weryfikacja branchu nie powiodła się: {e}"
+                )
 
             if verify_res.status_code != 200:
                 return False, (
-                    f"Zapisano GitHub (commit {commit_sha}), ale weryfikacja "
-                    f"zwróciła HTTP {verify_res.status_code}: {verify_res.text}"
+                    f"GitHub przyjął zapis (commit {commit_sha}), ale "
+                    f"weryfikacja branchu zwróciła HTTP {verify_res.status_code}: "
+                    f"{verify_res.text}"
                 )
 
-            verified = verify_res.json()
-            verified_b64 = verified.get("content", "").replace("\n", "")
-            try:
-                verified_bytes = base64.b64decode(verified_b64)
-                verified_text = verified_bytes.decode("utf-8")
-            except Exception as e:
+            verified_blob_sha = verify_res.json().get("sha", "")
+            if verified_blob_sha != expected_blob_sha:
                 return False, (
-                    f"Zapisano GitHub (commit {commit_sha}), ale nie można "
-                    f"odczytać pliku podczas weryfikacji: {e}"
-                )
-
-            if verified_text != json_content_str:
-                return False, (
-                    f"GitHub przyjął zapis (commit {commit_sha}), ale zawartość "
-                    "songs.json po zapisie różni się od danych wysłanych ze Streamlit."
+                    f"GitHub przyjął zapis (commit {commit_sha}), ale branch "
+                    f"{GITHUB_BRANCH} nie wskazuje na wysłaną wersję songs.json. "
+                    f"oczekiwano {expected_blob_sha}, otrzymano {verified_blob_sha or 'brak'}."
                 )
 
             return True, (
@@ -148,14 +156,12 @@ def push_json_to_github(json_content_str):
                 f"Branch: {GITHUB_BRANCH}; commit: {commit_sha or 'brak'}."
             )
 
-        # 409 oznacza, że SHA zdążył się zmienić — pobieramy go ponownie.
         if put_res.status_code == 409 and attempt == 0:
             continue
 
         return False, f"GitHub PUT {put_res.status_code}: {put_res.text}"
 
     return False, "Publikacja nie powiodła się po ponowieniu próby."
-
 
 
 # ─────────────────────────────────────────────
