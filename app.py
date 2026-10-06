@@ -229,8 +229,19 @@ def publish_songs(songs):
 
 
 def publish_current_songs():
-    """Ręczne ponowne opublikowanie aktualnych danych z Google Sheets."""
-    return publish_songs(load_songs())
+    """Publikuje świeżo odczytane dane z Google Sheets."""
+    fresh_songs = load_songs()
+    if not fresh_songs:
+        return False, "Nie udało się odczytać piosenek z Google Sheets."
+    return publish_songs(fresh_songs)
+
+
+def save_and_publish_from_sheets():
+    """Po zapisie zawsze pobiera aktualny stan Sheets i publikuje właśnie jego."""
+    fresh_songs = load_songs()
+    if not fresh_songs:
+        return False, "Nie udało się ponownie odczytać danych z Google Sheets."
+    return fresh_songs, publish_songs(fresh_songs)
 
 def delete_song(row_idx):
     if not ws:
@@ -320,13 +331,11 @@ with tab_add:
     if st.button("➕ Dodaj piosenkę", type="primary", use_container_width=True):
         if new_title.strip() and new_lyrics.strip():
             if add_song(new_title.strip(), new_lyrics, new_tags):
-                # Publikujemy dokładnie dane z formularza, bez ponownego odczytu Sheets.
-                new_row = len(st.session_state.songs) + 2
-                new_song = build_song(new_title, new_lyrics, new_tags, new_row)
-                updated_songs = list(st.session_state.songs) + [new_song]
-                ok, resp = publish_songs(updated_songs)
+                # Google Sheets jest źródłem prawdy.
+                fresh_songs, result = save_and_publish_from_sheets()
+                ok, resp = result
                 if ok:
-                    st.session_state.songs = updated_songs
+                    st.session_state.songs = fresh_songs
                     st.success(f"Dodano i opublikowano: {new_title}")
                     st.rerun()
                 else:
@@ -357,20 +366,18 @@ with tab_edit:
 
         if st.button("💾 Zapisz zmiany", type="primary", use_container_width=True):
             if save_song(song["row"], edit_title, edit_lyrics, edit_tags):
-                # Publikujemy dokładnie to, co wpisano w formularzu.
-                updated_songs = []
-                for current in st.session_state.songs:
-                    if current["row"] == song["row"]:
-                        updated_songs.append(
-                            build_song(edit_title, edit_lyrics, edit_tags, song["row"])
-                        )
-                    else:
-                        updated_songs.append(current)
-
-                ok, resp = publish_songs(updated_songs)
+                # Po zapisie ponownie czytamy cały arkusz. Dzięki temu
+                # songs.json zawsze odpowiada rzeczywistemu stanowi Sheets.
+                fresh_songs, result = save_and_publish_from_sheets()
+                ok, resp = result
                 if ok:
-                    st.session_state.songs = updated_songs
-                    st.success("Zapisano i opublikowano!")
+                    st.session_state.songs = fresh_songs
+                    # Po publikacji wyszukujemy edytowany utwór w świeżej bazie.
+                    for new_idx, fresh_song in enumerate(fresh_songs):
+                        if fresh_song["row"] == song["row"]:
+                            st.session_state.edit_idx = new_idx
+                            break
+                    st.success("Zapisano w Google Sheets i opublikowano na GitHub!")
                     st.rerun()
                 else:
                     st.error(f"⚠️ Zmiany zapisano w Google Sheets, ale publikacja na GitHub nie powiodła się.\n\n{resp}")
